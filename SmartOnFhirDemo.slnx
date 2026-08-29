@@ -3,6 +3,7 @@
     <Project Path="src/SmartOnFhirDemo/SmartOnFhirDemo.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SmartOnFhirDemo.IntegrationTests/SmartOnFhirDemo.IntegrationTests.csproj" />
     <Project Path="tests/SmartOnFhirDemo.UnitTests/SmartOnFhirDemo.UnitTests.csproj" />
   </Folder>
 </Solution>

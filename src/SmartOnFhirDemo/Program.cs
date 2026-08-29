@@ -61,3 +61,7 @@ app.MapGet("/launch", async (
 });
 
 app.Run();
+
+// Named so the integration tests can host this app with WebApplicationFactory;
+// top-level statements otherwise compile to an internal Program class.
+public partial class Program;

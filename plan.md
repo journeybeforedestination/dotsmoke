@@ -5,7 +5,7 @@ at a time, each ending in a verifiable state.
 
 - [x] Step 1 — Restructure
 - [x] Step 2 — Unit tests for the already-pure code (+ birth-date precision fix)
-- [ ] Step 3 — Integration test against the real launcher
+- [x] Step 3 — Integration test against the real launcher
 - [ ] Step 4 — Extract the core, thin the adapters
 - [ ] Step 5 — Trusted-issuer allowlist
 - [ ] Step 6 — README
@@ -47,7 +47,7 @@ agrees with us.
 | Core failure reporting | Closed `record` hierarchy + `switch` expression | Exhaustive, immutable, no dependency; keeps error *kinds* instead of flattening to strings |
 | Layout | `src/` + `tests/` + `.sln` at root | Conventional with three projects; costs the clone-and-run story (see step 1) |
 | Integration transport | `WebApplicationFactory` + host-routing `DelegatingHandler` | One `HttpClient` with `AllowAutoRedirect` walks the whole chain; only one production change needed |
-| Containers | Launcher only, via Testcontainers | The launcher never calls back into the app, so containerising the app buys the test nothing |
+| Containers | Launcher only, started outside the tests | The launcher never calls back into the app, so containerising the app buys nothing. Testcontainers was dropped — see below |
 | Hermeticity | Not hermetic; needs internet + Docker | Accepted. Escape hatch is one env var — see "Prep for CI" |
 
 ## What the dig established
@@ -77,7 +77,6 @@ Verified by running the flow against the public launcher, not assumed:
 | --- | --- | --- |
 | `xunit.v3` | 4.0.0 | both test projects |
 | `Microsoft.AspNetCore.Mvc.Testing` | 10.0.11 | integration tests |
-| `Testcontainers` | 4.14.0 | integration tests |
 
 No mocking library. HTTP is faked with a stub `HttpMessageHandler`.
 
@@ -151,10 +150,8 @@ The safety net for step 4. Written against current behaviour.
 - Add `public partial class Program { }` to `Program.cs` — the only production
   change this step needs (top-level statements otherwise produce an internal
   `Program`, which `WebApplicationFactory<Program>` cannot reach).
-- Testcontainers fixture starts `smartonfhir/smart-launcher-2`, pinned by digest,
-  port 80 bound to a random host port, with an HTTP readiness wait.
-- Keep the launcher's upstream FHIR address a **fixture-level setting**, so
-  swapping to a local server later is a one-line change.
+- The launcher is expected to be already running, at `SMART_LAUNCHER_URL`. Tests
+  that need it skip when it is unset, so `dotnet test` stays green without it.
 - A `DelegatingHandler` routes requests for the app's host into the `TestServer`
   and everything else to the real network, so one `HttpClient` with
   `AllowAutoRedirect = true` walks launch -> authorize -> callback in a single GET.
@@ -171,6 +168,23 @@ Tests:
 - `/launch` with missing `iss` or `launch` renders the parameter error.
 
 **Done when:** the suite is green against the public launcher.
+
+**Testcontainers was dropped here.** The plan assumed the tests could start the
+container themselves, which needs a user-reachable Docker socket. Omarchy
+deliberately keeps users out of the `docker` group — its own install script calls
+membership "equivalent to passwordless root", and migration `1787580187.sh`
+actively removes existing users from it. The sanctioned opt-in is
+`omarchy setup security sudoless docker` (plus a reboot); Arch also ships no
+`docker-rootless-extras`, so rootless is hand-rolled. Rather than weaken the host's
+security posture to run a test suite, the launcher is started outside the tests and
+located through an environment variable. This also removed a dependency.
+
+The tests split by what they need:
+
+- `AppOnlyTests` — the failures the app reaches on its own (missing parameters,
+  unknown callback state, an unreachable issuer). No Docker, always run.
+- `SmartLaunchTests` — everything needing a real EHR. Skips with an actionable
+  message when `SMART_LAUNCHER_URL` is unset.
 
 ### Step 4 — Extract the core, thin the adapters
 
