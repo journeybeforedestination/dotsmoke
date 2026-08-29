@@ -22,7 +22,7 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
 ## Running it
 
 ```bash
-dotnet run
+dotnet run --project src/SmartOnFhirDemo
 ```
 
 Then at [launch.smarthealthit.org](https://launch.smarthealthit.org/):
