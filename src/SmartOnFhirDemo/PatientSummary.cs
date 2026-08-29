@@ -1,6 +1,7 @@
 using Hl7.Fhir.FhirPath;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Utility;
+using DateTimePrecision = Hl7.Fhir.ElementModel.Types.DateTimePrecision;
 using FhirAddress = Hl7.Fhir.Model.Address;
 
 namespace SmartOnFhirDemo;
@@ -62,13 +63,20 @@ public sealed record PatientSummary(
           ?? Join(", ", (address.Line ?? []).Concat([address.City, address.State, address.PostalCode]));
 
     /// <summary>
-    /// FHIR dates may be partial ("1974", "1974-12"), so let the SDK do the parsing
-    /// and fall back to the raw value when a full date isn't available.
+    /// FHIR dates may be partial ("1974", "1974-12"). The SDK completes those to the
+    /// first of the year or month, so precision has to come from the value itself —
+    /// otherwise the summary shows a day the record never held, and an age derived
+    /// from it. A partial date is rendered as written, with no age.
     /// </summary>
     private static string? FormatBirthDate(Date? birthDate)
     {
         if (birthDate is null) return null;
-        if (!birthDate.TryToDateTimeOffset(out var born)) return NullIfBlank(birthDate.Value);
+
+        var toTheDay = birthDate.TryToSystemDate(out var parsed)
+                       && parsed.Precision == DateTimePrecision.Day;
+
+        if (!toTheDay || !birthDate.TryToDateTimeOffset(out var born))
+            return NullIfBlank(birthDate.Value);
 
         var today = DateTimeOffset.UtcNow;
         var age = today.Year - born.Year;

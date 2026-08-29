@@ -69,6 +69,41 @@ public class PatientSummaryTests
         Assert.Equal(expected, summary.Gender);
     }
 
+    // ---- Birth date -------------------------------------------------------
+
+    [Theory]
+    [InlineData("1974")]
+    [InlineData("1974-12")]
+    public void BirthDate_keeps_a_partial_date_as_written_and_shows_no_age(string partial)
+    {
+        var summary = Summarize($$"""{"resourceType":"Patient","birthDate":"{{partial}}"}""");
+
+        // The SDK would happily complete these to 1974-01-01 / 1974-12-01. Showing
+        // that day, or an age derived from it, would invent precision the record
+        // does not have.
+        Assert.Equal(partial, summary.BirthDate);
+        Assert.DoesNotContain("yrs", summary.BirthDate);
+    }
+
+    [Fact]
+    public void BirthDate_shows_the_day_and_an_age_once_the_day_is_known()
+    {
+        var summary = Summarize("""{"resourceType":"Patient","birthDate":"1974-12-25"}""");
+
+        // Asserted as shape, not a fixed number: the age is computed against the
+        // current clock, so any specific value would rot.
+        Assert.StartsWith("1974-12-25 (", summary.BirthDate);
+        Assert.EndsWith(" yrs)", summary.BirthDate);
+    }
+
+    [Fact]
+    public void BirthDate_is_absent_when_the_patient_has_none()
+    {
+        var summary = Summarize("""{"resourceType":"Patient","id":"no-data"}""");
+
+        Assert.Null(summary.BirthDate);
+    }
+
     // ---- Identifiers ------------------------------------------------------
 
     [Fact]
