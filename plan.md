@@ -6,7 +6,7 @@ at a time, each ending in a verifiable state.
 - [x] Step 1 — Restructure
 - [x] Step 2 — Unit tests for the already-pure code (+ birth-date precision fix)
 - [x] Step 3 — Integration test against the real launcher
-- [ ] Step 4 — Extract the core, thin the adapters
+- [x] Step 4 — Extract the core, thin the adapters
 - [ ] Step 5 — Trusted-issuer allowlist
 - [ ] Step 6 — README
 
@@ -202,9 +202,19 @@ the core a function of its inputs.
   `TokenExchangeFailed(Status, Reason)`, `NoPatientContext`,
   `PatientReadFailed(Reason)`, `IncompatibleFhirVersion(Reason)`.
 
-`/launch` and `OnGetAsync` reduce to: read parameters, look up or store the cache
-entry, call the core, `switch` the outcome onto a result. The cache lookup miss
-stays in the adapter as the expired-launch case.
+`/launch` and `OnGetAsync` reduce to: read parameters, hold or claim the cache
+entry, call the core, `switch` the outcome onto a result.
+
+**Changed from the plan: the expired-launch case moved into the core.** An
+authorization error (`?error=access_denied`) arrives without a usable `state`, so it
+must be handled *before* the cache is consulted. Leaving that ordering in the page
+would have kept protocol knowledge in the shell, so `CompleteAsync` takes a nullable
+`LaunchState` and owns the whole decision table, including `UnknownLaunch`. The
+adapter only turns a `state` into a session and outcomes into results.
+
+The outcome hierarchies are closed with a private constructor, so only the declared
+cases can exist. C# still cannot prove exhaustiveness over them, so each `switch`
+keeps a final arm that throws `UnreachableException`.
 
 Add unit tests for the outcomes the launcher cannot produce — no `patient` in the
 token response, discovery returning an empty body — using a stub

@@ -9,7 +9,7 @@ namespace SmartOnFhirDemo.UnitTests;
 /// </summary>
 internal static class Fixture
 {
-    private static readonly FhirJsonParser Parser = new();
+    private static readonly FhirJsonDeserializer Deserializer = new();
 
-    public static Patient Patient(string json) => Parser.Parse<Patient>(json);
+    public static Patient Patient(string json) => Deserializer.Deserialize<Patient>(json);
 }
