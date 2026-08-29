@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · SMART on FHIR demo</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body {
+            font: 16px/1.5 system-ui, sans-serif;
+            max-width: 42rem;
+            margin: 3rem auto;
+            padding: 0 1.5rem;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+        dl { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1.5rem; }
+        dt { font-weight: 600; opacity: .7; }
+        dd { margin: 0; }
+        code, pre { font-family: ui-monospace, monospace; font-size: .875rem; }
+        pre {
+            overflow-x: auto;
+            padding: 1rem;
+            border-radius: .375rem;
+            background: color-mix(in srgb, currentColor 8%, transparent);
+        }
+        details { margin-top: 2rem; }
+        summary { cursor: pointer; opacity: .7; }
+        footer {
+            margin-top: 3rem;
+            padding-top: 1rem;
+            border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+            font-size: .8125rem;
+            opacity: .6;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>@ViewData["Title"]</h1>
+        @RenderBody()
+    </main>
+    <footer>SMART on FHIR demo · Firely SDK · FHIR @ModelInfo.Version</footer>
+</body>
+</html>

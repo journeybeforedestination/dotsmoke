@@ -1,0 +1,9 @@
+@page "/error"
+@model ErrorModel
+@{
+    ViewData["Title"] = "Launch failed";
+}
+
+<p>@(Model.Message ?? "Something went wrong during the SMART launch.")</p>
+
+<p><a href="/">Back to the start</a></p>

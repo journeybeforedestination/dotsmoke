@@ -1,0 +1,18 @@
+@page "/callback"
+@model CallbackModel
+@{
+    ViewData["Title"] = "Patient summary";
+}
+
+<dl>
+    @foreach (var (label, value) in Model.Summary.Fields)
+    {
+        <dt>@label</dt>
+        <dd>@value</dd>
+    }
+</dl>
+
+<details>
+    <summary>Raw Patient resource</summary>
+    <pre>@Model.RawJson</pre>
+</details>

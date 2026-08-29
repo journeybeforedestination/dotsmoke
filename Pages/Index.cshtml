@@ -1,0 +1,19 @@
+@page "/"
+@{
+    ViewData["Title"] = "SMART on FHIR demo";
+    var launchUrl = $"{Request.Scheme}://{Request.Host}/launch";
+}
+
+<p>This app has nothing to show on its own — it waits to be launched by an EHR.</p>
+
+<ol>
+    <li>Open the <a href="https://launch.smarthealthit.org/">SMART App Launcher</a>.</li>
+    <li>Set <strong>Launch Type</strong> to <em>Provider EHR Launch</em> and <strong>FHIR Version</strong> to <em>R4</em>.</li>
+    <li>Paste <code>@launchUrl</code> into <strong>App's Launch URL</strong>, and leave Client ID and Redirect URIs blank.</li>
+    <li>Pick a patient, then press <strong>Launch</strong>.</li>
+</ol>
+
+<p>
+    The app handles discovery, authorization with PKCE, and the token exchange,
+    then reads that patient and shows a short summary.
+</p>
