@@ -10,10 +10,10 @@ namespace SmartOnFhirDemo.IntegrationTests;
 public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<LauncherFixture>
 {
     /// <summary>Gates every test here: without a launcher there is nothing to launch against.</summary>
-    public static bool LauncherIsRunning => LauncherFixture.IsRunning;
+    public static bool LauncherIsRunning => Launcher.IsRunning;
 
     private const string NeedsLauncher =
-        "Needs a running SMART App Launcher; set " + LauncherFixture.UrlVariable + " (see the README).";
+        "Needs a running SMART App Launcher; set " + Launcher.UrlVariable + " (see the README).";
 
     private static readonly string[] SummaryLabels =
         ["Name", "Gender", "Birth date", "MRN", "Address", "Phone", "Marital status"];

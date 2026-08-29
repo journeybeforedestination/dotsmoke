@@ -10,6 +10,12 @@ public sealed class SmartOptions
 {
     public string ClientId { get; set; } = "smart-on-fhir-demo";
     public string Scopes { get; set; } = "launch patient/Patient.read";
+
+    /// <summary>
+    /// The EHRs this app will accept a launch from. A real app is registered with each
+    /// EHR it serves, so it knows this list up front. An empty list trusts nobody.
+    /// </summary>
+    public string[] TrustedIssuers { get; set; } = ["https://launch.smarthealthit.org"];
 }
 
 /// <summary>The subset of <c>.well-known/smart-configuration</c> this app needs.</summary>
@@ -27,6 +33,29 @@ public sealed record TokenResponse(
 
 public static class Smart
 {
+    /// <summary>
+    /// Whether a launch may be accepted from this issuer. <c>iss</c> arrives as a query
+    /// parameter, and everything downstream trusts it: the app fetches that host's
+    /// configuration, sends the user to the authorization endpoint it names, and posts
+    /// the authorization code to its token endpoint. An unchecked <c>iss</c> is therefore
+    /// a server-side request forgery, an open redirect, and a way to harvest codes.
+    ///
+    /// Compared by origin — scheme, host and port — because a SMART issuer legitimately
+    /// carries a path, and the launcher encodes launch settings into it.
+    /// </summary>
+    public static bool IsTrustedIssuer(string? iss, IEnumerable<string> trustedIssuers) =>
+        Origin(iss) is { } origin
+        && trustedIssuers.Any(trusted =>
+            Origin(trusted) is { } candidate
+            && string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Scheme, host and port of an absolute http(s) URL, or null if it is neither.</summary>
+    private static string? Origin(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? $"{uri.Scheme}://{uri.Host}:{uri.Port}"
+            : null;
+
     /// <summary>Cache key for a launch in flight.</summary>
     public static string CacheKey(string state) => $"launch:{state}";
 

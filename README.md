@@ -36,6 +36,15 @@ Then at [launch.smarthealthit.org](https://launch.smarthealthit.org/):
 
 Pick a patient, press **Launch**.
 
+To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
+`appsettings.json` — the app refuses launches from anywhere not on that list:
+
+```json
+"Smart": {
+  "TrustedIssuers": [ "https://launch.smarthealthit.org", "https://ehr.example" ]
+}
+```
+
 ## Tests
 
 ```bash
@@ -68,8 +77,45 @@ than on specific patient data — that sandbox can be reseeded.
 
 [launcher]: https://github.com/smart-on-fhir/smart-launcher-v2
 
+### If you wire up CI
+
+None of this is wired up, but the constraints are known.
+
+The integration tests reach two things outside your control. Pulling the launcher
+image is free on GitHub-hosted runners, which are exempt from Docker Hub's limits
+for public images; self-hosted runners are not, and share a low anonymous quota per
+IP, so authenticate or mirror the image. The larger risk is the sandbox the launcher
+proxies: `r4.smarthealthit.org` reports `Smile CDR 2019.08.PRE / HAPI FHIR
+4.0.0-SNAPSHOT`, a 2019 pre-release, with no SLA, no status page to gate on, and no
+rate-limit headers. It answers in milliseconds today, but it can be down, reseeded,
+or throttled without notice.
+
+Only reseeding constrains the tests as written, and they already assert on the shape
+of the rendered summary rather than on specific patient data.
+
+The two projects suggest their own CI shape: run the unit tests on every push — fast,
+offline, gating pull requests — and the integration tests nightly and on demand,
+where a red run is real signal about either the code or the sandbox rather than noise
+on someone's branch.
+
+To go hermetic, point the launcher at your own FHIR server with `FHIR_SERVER_R4`;
+that touches the fixture only, not the tests. Either run `hapiproject/hapi` and seed
+it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatement` —
+`VerifyFhirVersion` means the app fetches that first — along with `/Patient/{id}`.
+
 ## Design notes
 
+- **The issuer is checked against an allowlist.** `iss` arrives as a query
+  parameter and everything downstream trusts it: the app fetches that host's
+  configuration, sends the user to the authorization endpoint it names, and posts
+  the authorization code to its token endpoint. Unchecked, that is a server-side
+  request forgery, an open redirect, and a way to harvest codes. `TrustedIssuers`
+  lists the EHRs a launch may come from, compared by origin because a SMART issuer
+  legitimately carries a path. An empty list trusts nobody.
+- **The protocol is separate from the web layer.** `SmartLaunch` does discovery,
+  the authorization request, the token exchange and the patient read, returning a
+  closed set of outcomes; `/launch` and the callback page map those onto responses.
+  That separation is what lets the launch be tested without a web host.
 - **The OAuth handshake is hand-rolled** over `HttpClient`. SMART reveals the
   issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
   around a static `Authority` — fights.

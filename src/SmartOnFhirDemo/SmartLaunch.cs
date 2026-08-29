@@ -22,6 +22,9 @@ public abstract record LaunchOutcome
 
     public sealed record MissingParameters : LaunchOutcome;
 
+    /// <summary>The launch named an EHR this app is not registered with.</summary>
+    public sealed record UntrustedIssuer(string Iss) : LaunchOutcome;
+
     public sealed record DiscoveryFailed(string WellKnown, string Reason) : LaunchOutcome;
 }
 
@@ -72,6 +75,13 @@ public sealed class SmartLaunch(
     {
         if (string.IsNullOrWhiteSpace(iss) || string.IsNullOrWhiteSpace(launch))
             return new LaunchOutcome.MissingParameters();
+
+        // Before the issuer is contacted at all, not after.
+        if (!Smart.IsTrustedIssuer(iss, Options.TrustedIssuers))
+        {
+            log.LogWarning("Refused a launch from untrusted issuer {Iss}", iss);
+            return new LaunchOutcome.UntrustedIssuer(iss);
+        }
 
         var wellKnown = $"{iss.TrimEnd('/')}/.well-known/smart-configuration";
 

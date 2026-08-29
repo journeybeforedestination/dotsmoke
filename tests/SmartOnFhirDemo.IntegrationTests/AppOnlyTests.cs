@@ -42,9 +42,29 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [Fact]
     public async Task A_launch_against_an_unreachable_issuer_is_reported()
     {
-        var html = await app.GetAsync("/launch?iss=http://127.0.0.1:1/fhir&launch=irrelevant");
+        var html = await app.GetAsync($"/launch?iss={AppFixture.UnreachableIssuer}/fhir&launch=irrelevant");
 
         Assert.Contains("Could not read the SMART configuration", html);
+    }
+
+    [Theory]
+    [InlineData("https://evil.example/fhir")]
+    [InlineData("http://169.254.169.254/latest/meta-data/")]
+    [InlineData("https://app.test@evil.example/fhir")]
+    public async Task A_launch_from_an_untrusted_issuer_is_refused(string iss)
+    {
+        var html = await app.GetAsync($"/launch?iss={Uri.EscapeDataString(iss)}&launch=irrelevant");
+
+        Assert.Contains("not registered to launch from that EHR", html);
+    }
+
+    [Fact]
+    public async Task Refusing_an_untrusted_issuer_does_not_echo_it_back()
+    {
+        var html = await app.GetAsync("/launch?iss=https://evil.example/fhir&launch=irrelevant");
+
+        // The rejected value is attacker-controlled; it belongs in the log, not the page.
+        Assert.DoesNotContain("evil.example", html);
     }
 
     [Fact]

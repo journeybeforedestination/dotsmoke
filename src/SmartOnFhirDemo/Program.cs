@@ -34,6 +34,11 @@ app.MapGet("/launch", async (
         LaunchOutcome.MissingParameters =>
             Fail("This URL is meant to be opened by an EHR: both 'iss' and 'launch' query parameters are required."),
 
+        // The issuer is deliberately not echoed back: it is attacker-controlled, and the
+        // rejected value belongs in the log rather than on a page.
+        LaunchOutcome.UntrustedIssuer =>
+            Fail("This app is not registered to launch from that EHR. Add its issuer to Smart:TrustedIssuers to allow it."),
+
         LaunchOutcome.DiscoveryFailed(var wellKnown, var reason) =>
             Fail($"Could not read the SMART configuration from {wellKnown} — {reason}"),
 
