@@ -102,6 +102,9 @@ jobs:
           docker logs smart-launcher || true
           exit 1
 
+      - name: Restore the pinned tools
+        run: dotnet tool restore
+
       - name: Restore
         run: dotnet restore --locked-mode
 
@@ -109,4 +112,16 @@ jobs:
         run: dotnet build --no-restore -warnaserror
 
       - name: Test
-        run: dotnet test --no-build
+        run: >
+          dotnet test --no-build
+          --coverage --coverage-settings coverage.config
+          --coverage-output-format cobertura
+
+      # This job runs the whole suite, so unlike the pull-request one its number means
+      # something and can be held to. The floor is under the measured rate rather than
+      # at it: this job reaches a public sandbox that can be reseeded, and a patient
+      # arriving without a phone number should not read as a regression.
+      #
+      # Measured 95.0% on 2026-08-30. Raise this when it has comfortably moved up.
+      - name: Report coverage
+        run: ./.github/coverage.sh 93

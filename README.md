@@ -157,7 +157,10 @@ refusal, which is the app's central security property — and the eleven that do
 themselves. The whole job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the
-container first. Because those tests skip themselves when `SMART_LAUNCHER_URL`
+container first. Because it runs the whole suite, that job is also where the coverage
+floor lives — currently 93%, against a measured 95.0%. The gap is slack, not laxity:
+the job reaches a public sandbox that can be reseeded, and a patient turning up without
+a phone number should not read as a regression. Because those tests skip themselves when `SMART_LAUNCHER_URL`
 answers nothing, a container that failed to start would leave the job green while
 testing nothing — so the job polls the launcher's FHIR endpoint and fails there
 instead, where the cause is legible.
