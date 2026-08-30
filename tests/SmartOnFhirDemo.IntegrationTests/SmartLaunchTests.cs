@@ -72,6 +72,18 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task An_ehr_launch_names_the_practitioner_who_started_it()
+    {
+        var html = await LaunchAsync();
+
+        // Which practitioner the sandbox serves is not the point; that the id_token was
+        // validated, its fhirUser followed, and a real name read back is.
+        Assert.Contains("Launched by", html);
+        Assert.DoesNotContain("no id_token", html);
+        Assert.DoesNotContain("could not be validated", html);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
     public async Task The_raw_patient_resource_is_rendered_html_encoded()
     {
         var html = await LaunchAsync();

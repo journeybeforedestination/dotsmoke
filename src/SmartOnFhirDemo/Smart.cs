@@ -112,6 +112,16 @@ public static class Smart
             && string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase)
         );
 
+    /// <summary>
+    /// Whether two absolute URLs sit on the same scheme, host and port. Used to decide
+    /// whether a reference may be followed with the access token attached: a reference
+    /// pointing somewhere else is a way to have this app hand the credential over.
+    /// </summary>
+    public static bool SameOrigin(string? url, string? other) =>
+        Origin(url) is { } origin
+        && Origin(other) is { } candidate
+        && string.Equals(origin, candidate, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Scheme, host and port of an absolute http(s) URL, or null if it is neither.</summary>
     private static string? Origin(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)

@@ -15,8 +15,10 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
   app ──GET {iss}/.well-known/smart-configuration──▶ authorize + token endpoints
   app ──302──▶ {authorize}?…&aud={iss}&launch=…&code_challenge=…
   launcher (provider login → patient/consent) ──302──▶ app /callback?code=…&state=…
-  app ──POST {token}──▶ { access_token, patient }
-  app ──GET {iss}/Patient/{id}  Bearer──▶ Patient
+  app ──POST {token}──▶ { access_token, id_token, patient }
+  app  validate id_token against the keys at {jwks_uri}
+  app ──GET {iss}/Patient/{id}   Bearer──▶ Patient
+  app ──GET {iss}/{fhirUser}     Bearer──▶ Practitioner
   app  render summary; access token discarded
 ```
 
@@ -81,6 +83,11 @@ To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
 }
 ```
 
+`Smart:Scopes` is what the app asks each of them for. `openid fhirUser` is what makes
+an EHR say who started the launch, and `user/Practitioner.read` is what lets that
+person's name be read; drop either and the launch still works, and the summary simply
+says nobody was named.
+
 ## Tests
 
 ```bash
@@ -125,10 +132,10 @@ dotnet build --no-restore -warnaserror
 dotnet test --no-build
 ```
 
-That last line runs both projects, not only the fast one. Twenty-one of the thirty
-integration tests need no launcher — among them every untrusted-issuer refusal,
-which is the app's central security property — and the nine that do skip themselves.
-The whole job stays offline.
+That last line runs both projects, not only the fast one. Twenty-one of the
+thirty-one integration tests need no launcher — among them every untrusted-issuer
+refusal, which is the app's central security property — and the ten that do skip
+themselves. The whole job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the
 container first. Because those tests skip themselves when `SMART_LAUNCHER_URL`
@@ -272,6 +279,15 @@ than quietly resolving something new.
   when it must is one deployment change away from not checking when it should. The
   rules live in `IdToken` as a pure function of the token, the keys and the clock;
   fetching and caching the keys is `Jwks`, kept separate.
+- **The launching user is projected off the base resource.** `fhirUser` may name a
+  Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
+  `identifier` with FHIRPath against `Resource` — which handles all four in less code
+  than handling one would take alone. It keeps a name's `prefix`, because "Dr.
+  Albertine Orn" is most of how a clinician is addressed.
+- **A fhirUser pointing elsewhere is not followed.** The reference is read relative to
+  the launch's own FHIR server, or absolute if it names that same origin. An absolute
+  reference to another origin is refused, because following it would send this
+  launch's access token to a server the token was never issued for.
 - **Identity degrades, it does not fail.** No `openid` grant, no published
   `jwks_uri`, unreachable keys, or a token that fails validation each leave the
   launch standing with a sentence saying why nobody is named. The app's job is the

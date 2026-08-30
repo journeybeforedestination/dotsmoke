@@ -502,6 +502,87 @@ public class SmartLaunchTests
         Assert.Equal("Alex Rivera", completed.Summary.Name);
     }
 
+    [Fact]
+    public async Task A_relative_fhirUser_reference_is_read_from_the_launch_server()
+    {
+        var completed = await CompleteSso(TokenJsonWith(TestIdTokens.Token()));
+
+        // The launcher returns a relative reference even though SMART says it SHOULD be
+        // absolute, so this is the shape that actually turns up in practice.
+        Assert.Equal("Dr. Albertine Orn", completed.User?.Name);
+        Assert.Equal("Practitioner", completed.User?.ResourceType);
+    }
+
+    [Fact]
+    public async Task An_absolute_fhirUser_reference_on_the_same_server_is_followed()
+    {
+        var completed = await CompleteSso(
+            TokenJsonWith(TestIdTokens.Token(fhirUser: $"{Iss}/Practitioner/prac-1"))
+        );
+
+        Assert.Equal("Dr. Albertine Orn", completed.User?.Name);
+    }
+
+    [Fact]
+    public async Task An_absolute_fhirUser_reference_elsewhere_is_not_followed()
+    {
+        var asked = new List<string>();
+
+        var smart = Completing(
+            TokenJsonWith(TestIdTokens.Token(fhirUser: "https://elsewhere.example/Practitioner/x")),
+            observe: request => asked.Add(request.RequestUri!.ToString()),
+            jwks: TestIdTokens.JwksJson(TestIdTokens.Ehr)
+        );
+
+        var completed = Assert.IsType<CallbackOutcome.Completed>(
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                error: null,
+                errorDescription: null,
+                SsoSession,
+                TestContext.Current.CancellationToken
+            )
+        );
+
+        // Following it would hand this server's access token to a server the token was
+        // never issued for, which is the whole reason the origin is checked.
+        Assert.Null(completed.User);
+        Assert.Contains("other than the one this launch is for", completed.UserUnavailable);
+        Assert.DoesNotContain(asked, url => url.Contains("elsewhere.example"));
+    }
+
+    [Fact]
+    public async Task A_user_the_server_will_not_return_leaves_the_patient_summary_standing()
+    {
+        var smart = Smart(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
+                : path.Contains("/Practitioner/") ? Fhir(ForbiddenOutcome, HttpStatusCode.Forbidden)
+                : path.Contains("/Patient/") ? Fhir(PatientJson)
+                : path.EndsWith("/keys", StringComparison.Ordinal)
+                    ? Json(TestIdTokens.JwksJson(TestIdTokens.Ehr))
+                : Json(TokenJsonWith(TestIdTokens.Token()));
+        });
+
+        var completed = Assert.IsType<CallbackOutcome.Completed>(
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                error: null,
+                errorDescription: null,
+                SsoSession,
+                TestContext.Current.CancellationToken
+            )
+        );
+
+        // An EHR is not obliged to grant user/Practitioner.read just because it was asked.
+        Assert.Null(completed.User);
+        Assert.Contains("403", completed.UserUnavailable);
+        Assert.Equal("Alex Rivera", completed.Summary.Name);
+    }
+
     // ---- Fixtures ---------------------------------------------------------
 
     private const string AccessToken = "the-access-token";
@@ -515,6 +596,11 @@ public class SmartLaunchTests
     private const string CapabilityStatement = """
         {"resourceType":"CapabilityStatement","status":"active","date":"2024-01-01",
          "kind":"instance","fhirVersion":"4.0.1","format":["json"]}
+        """;
+
+    private const string PractitionerJson = """
+        {"resourceType":"Practitioner","id":"prac-1",
+         "name":[{"family":"Orn","given":["Albertine"],"prefix":["Dr."]}]}
         """;
 
     private const string PatientJson = """
@@ -538,15 +624,20 @@ public class SmartLaunchTests
             var path = request.RequestUri!.AbsolutePath;
             return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
                 : path.Contains("/Patient/") ? Fhir(PatientJson)
+                : path.Contains("/Practitioner/") ? Fhir(PractitionerJson)
                 : path.EndsWith("/keys", StringComparison.Ordinal) ? Json(jwks ?? "{}")
                 : Json(tokenJson);
         });
 
-    private static HttpResponseMessage Fhir(string body) =>
-        new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/fhir+json"),
-        };
+    private const string ForbiddenOutcome = """
+        {"resourceType":"OperationOutcome","issue":[
+          {"severity":"error","code":"forbidden","details":{"text":"Scope not granted"}}]}
+        """;
+
+    private static HttpResponseMessage Fhir(
+        string body,
+        HttpStatusCode status = HttpStatusCode.OK
+    ) => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/fhir+json") };
 
     private static SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond)
     {
