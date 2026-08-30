@@ -13,15 +13,18 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : LearnPage(ca
 {
     public LaunchStep Step { get; private set; } = default!;
 
-    [BindProperty] public string? Code { get; set; }
+    [BindProperty]
+    public string? Code { get; set; }
 
-    [BindProperty] public string? State { get; set; }
+    [BindProperty]
+    public string? State { get; set; }
 
     public IActionResult OnGet(
         string? code,
         string? state,
         string? error,
-        [FromQuery(Name = "error_description")] string? errorDescription)
+        [FromQuery(Name = "error_description")] string? errorDescription
+    )
     {
         if (!string.IsNullOrEmpty(error))
             return Fail(LaunchMessages.AuthorizationDenied(errorDescription ?? error));
@@ -42,7 +45,13 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : LearnPage(ca
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
         var outcome = await smart.CompleteAsync(
-            Code, State, error: null, errorDescription: null, Cache.ClaimLaunch(State), ct);
+            Code,
+            State,
+            error: null,
+            errorDescription: null,
+            Cache.ClaimLaunch(State),
+            ct
+        );
 
         if (outcome is not CallbackOutcome.Completed completed)
             return Fail(LaunchMessages.For(outcome));

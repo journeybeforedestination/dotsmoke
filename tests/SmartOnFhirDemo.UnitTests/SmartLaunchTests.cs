@@ -14,8 +14,12 @@ public class SmartLaunchTests
     private const string Iss = "https://ehr.example/r4/fhir";
     private const string RedirectUri = "http://localhost:5000/callback";
 
-    private static readonly LaunchState Session =
-        new(Iss, "https://ehr.example/token", "the-verifier", RedirectUri);
+    private static readonly LaunchState Session = new(
+        Iss,
+        "https://ehr.example/token",
+        "the-verifier",
+        RedirectUri
+    );
 
     // ---- Beginning a launch -----------------------------------------------
 
@@ -26,19 +30,30 @@ public class SmartLaunchTests
     [InlineData("   ", "launch-123")]
     public async Task A_launch_without_both_parameters_goes_no_further(string? iss, string? launch)
     {
-        var smart = Smart(_ => throw new Xunit.Sdk.XunitException("Discovery should not have been attempted."));
+        var smart = Smart(_ =>
+            throw new Xunit.Sdk.XunitException("Discovery should not have been attempted.")
+        );
 
-        Assert.IsType<LaunchOutcome.MissingParameters>(await smart.BeginAsync(iss, launch, RedirectUri, TestContext.Current.CancellationToken));
+        Assert.IsType<LaunchOutcome.MissingParameters>(
+            await smart.BeginAsync(iss, launch, RedirectUri, TestContext.Current.CancellationToken)
+        );
     }
 
     [Fact]
     public async Task An_untrusted_issuer_is_refused_without_being_contacted()
     {
-        var smart = Smart(_ => throw new Xunit.Sdk.XunitException("The issuer must not be contacted."));
+        var smart = Smart(_ =>
+            throw new Xunit.Sdk.XunitException("The issuer must not be contacted.")
+        );
 
         var outcome = Assert.IsType<LaunchOutcome.UntrustedIssuer>(
             await smart.BeginAsync(
-                "https://evil.example/fhir", "launch-123", RedirectUri, TestContext.Current.CancellationToken));
+                "https://evil.example/fhir",
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.Equal("https://evil.example/fhir", outcome.Iss);
     }
@@ -54,7 +69,12 @@ public class SmartLaunchTests
         });
 
         // The trailing slash must not produce a doubled one.
-        await smart.BeginAsync($"{Iss}/", "launch-123", RedirectUri, TestContext.Current.CancellationToken);
+        await smart.BeginAsync(
+            $"{Iss}/",
+            "launch-123",
+            RedirectUri,
+            TestContext.Current.CancellationToken
+        );
 
         Assert.Equal($"{Iss}/.well-known/smart-configuration", asked?.ToString());
     }
@@ -65,7 +85,13 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("null"));
 
         var outcome = Assert.IsType<LaunchOutcome.DiscoveryFailed>(
-            await smart.BeginAsync(Iss, "launch-123", RedirectUri, TestContext.Current.CancellationToken));
+            await smart.BeginAsync(
+                Iss,
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.Contains("empty", outcome.Reason);
     }
@@ -74,12 +100,21 @@ public class SmartLaunchTests
     [InlineData(HttpStatusCode.InternalServerError, Configuration)]
     [InlineData(HttpStatusCode.NotFound, Configuration)]
     [InlineData(HttpStatusCode.OK, "this is not json")]
-    public async Task Discovery_that_fails_or_returns_nonsense_is_reported(HttpStatusCode status, string body)
+    public async Task Discovery_that_fails_or_returns_nonsense_is_reported(
+        HttpStatusCode status,
+        string body
+    )
     {
         var smart = Smart(_ => Json(body, status));
 
         Assert.IsType<LaunchOutcome.DiscoveryFailed>(
-            await smart.BeginAsync(Iss, "launch-123", RedirectUri, TestContext.Current.CancellationToken));
+            await smart.BeginAsync(
+                Iss,
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
     }
 
     [Fact]
@@ -88,7 +123,13 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json(Configuration));
 
         var prepared = Assert.IsType<LaunchOutcome.Prepared>(
-            await smart.BeginAsync(Iss, "launch-123", RedirectUri, TestContext.Current.CancellationToken));
+            await smart.BeginAsync(
+                Iss,
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.StartsWith("https://ehr.example/authorize?", prepared.AuthorizeUrl);
         Assert.Contains($"state={prepared.State}", prepared.AuthorizeUrl);
@@ -105,8 +146,12 @@ public class SmartLaunchTests
     {
         var smart = Smart(_ => Json(Configuration));
 
-        var first = Assert.IsType<LaunchOutcome.Prepared>(await smart.BeginAsync(Iss, "l", RedirectUri, TestContext.Current.CancellationToken));
-        var second = Assert.IsType<LaunchOutcome.Prepared>(await smart.BeginAsync(Iss, "l", RedirectUri, TestContext.Current.CancellationToken));
+        var first = Assert.IsType<LaunchOutcome.Prepared>(
+            await smart.BeginAsync(Iss, "l", RedirectUri, TestContext.Current.CancellationToken)
+        );
+        var second = Assert.IsType<LaunchOutcome.Prepared>(
+            await smart.BeginAsync(Iss, "l", RedirectUri, TestContext.Current.CancellationToken)
+        );
 
         Assert.NotEqual(first.State, second.State);
         Assert.NotEqual(first.Session.CodeVerifier, second.Session.CodeVerifier);
@@ -120,7 +165,15 @@ public class SmartLaunchTests
         var smart = Smart(_ => throw new Xunit.Sdk.XunitException("No token call should be made."));
 
         var outcome = Assert.IsType<CallbackOutcome.AuthorizationDenied>(
-            await smart.CompleteAsync(null, null, "access_denied", "The user said no", Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                null,
+                null,
+                "access_denied",
+                "The user said no",
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.Equal("The user said no", outcome.Reason);
     }
@@ -131,7 +184,15 @@ public class SmartLaunchTests
         var smart = Smart(_ => throw new Xunit.Sdk.XunitException("No token call should be made."));
 
         var outcome = Assert.IsType<CallbackOutcome.AuthorizationDenied>(
-            await smart.CompleteAsync(null, null, "access_denied", null, Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                null,
+                null,
+                "access_denied",
+                null,
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.Equal("access_denied", outcome.Reason);
     }
@@ -142,7 +203,15 @@ public class SmartLaunchTests
         var smart = Smart(_ => throw new Xunit.Sdk.XunitException("No token call should be made."));
 
         Assert.IsType<CallbackOutcome.UnknownLaunch>(
-            await smart.CompleteAsync("the-code", "the-state", null, null, launch: null, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                null,
+                null,
+                launch: null,
+                TestContext.Current.CancellationToken
+            )
+        );
     }
 
     [Fact]
@@ -157,7 +226,14 @@ public class SmartLaunchTests
             return Json("""{"access_token":"tok"}""");
         });
 
-        await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken);
+        await smart.CompleteAsync(
+            "the-code",
+            "the-state",
+            null,
+            null,
+            Session,
+            TestContext.Current.CancellationToken
+        );
 
         Assert.Contains("grant_type=authorization_code", body);
         Assert.Contains("code=the-code", body);
@@ -171,7 +247,15 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("""{"error":"invalid_grant"}""", HttpStatusCode.BadRequest));
 
         var outcome = Assert.IsType<CallbackOutcome.TokenExchangeFailed>(
-            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                null,
+                null,
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.Equal(400, outcome.Status);
         Assert.Contains("invalid_grant", outcome.Reason);
@@ -183,7 +267,15 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("""{"patient":"pat-1"}"""));
 
         Assert.IsType<CallbackOutcome.NoAccessToken>(
-            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                null,
+                null,
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
     }
 
     [Fact]
@@ -192,7 +284,15 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("""{"access_token":"tok"}"""));
 
         Assert.IsType<CallbackOutcome.NoPatientContext>(
-            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                null,
+                null,
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
     }
 
     // ---- What a finished launch is allowed to carry ------------------------
@@ -206,7 +306,15 @@ public class SmartLaunchTests
         var smart = Completing(TokenJson);
 
         var completed = Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                null,
+                null,
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.DoesNotContain(AccessToken, completed.TokenJson);
         Assert.Contains(SmartOnFhirDemo.Smart.Withheld, completed.TokenJson);
@@ -225,10 +333,19 @@ public class SmartLaunchTests
         var smart = Completing(
             """
             {"access_token":"a-token","refresh_token":"a-refresh","id_token":"an-id","patient":"pat-1"}
-            """);
+            """
+        );
 
         var completed = Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                null,
+                null,
+                Session,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.DoesNotContain("a-token", completed.TokenJson);
         Assert.DoesNotContain("a-refresh", completed.TokenJson);
@@ -240,13 +357,23 @@ public class SmartLaunchTests
     {
         // Withheld from the caller, not from the request it exists for.
         string? presented = null;
-        var smart = Completing(TokenJson, request =>
-        {
-            if (request.RequestUri!.AbsolutePath.Contains("/Patient/"))
-                presented = request.Headers.Authorization?.ToString();
-        });
+        var smart = Completing(
+            TokenJson,
+            request =>
+            {
+                if (request.RequestUri!.AbsolutePath.Contains("/Patient/"))
+                    presented = request.Headers.Authorization?.ToString();
+            }
+        );
 
-        await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken);
+        await smart.CompleteAsync(
+            "the-code",
+            "the-state",
+            null,
+            null,
+            Session,
+            TestContext.Current.CancellationToken
+        );
 
         Assert.Equal($"Bearer {AccessToken}", presented);
     }
@@ -259,7 +386,13 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json(Configuration));
 
         var prepared = Assert.IsType<LaunchOutcome.Prepared>(
-            await smart.BeginAsync(Iss, "launch-123", RedirectUri, TestContext.Current.CancellationToken));
+            await smart.BeginAsync(
+                Iss,
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
 
         Assert.Equal($"{Iss}/.well-known/smart-configuration", prepared.WellKnownUrl);
         Assert.Contains("authorization_endpoint", prepared.ConfigurationJson);
@@ -293,32 +426,45 @@ public class SmartLaunchTests
     /// A launch that runs all the way through: the token exchange, the version check the
     /// Firely client makes first, and then the patient read.
     /// </summary>
-    private static SmartLaunch Completing(string tokenJson, Action<HttpRequestMessage>? observe = null) =>
+    private static SmartLaunch Completing(
+        string tokenJson,
+        Action<HttpRequestMessage>? observe = null
+    ) =>
         Smart(request =>
         {
             observe?.Invoke(request);
 
             var path = request.RequestUri!.AbsolutePath;
             return path.EndsWith("/metadata") ? Fhir(CapabilityStatement)
-                 : path.Contains("/Patient/") ? Fhir(PatientJson)
-                 : Json(tokenJson);
+                : path.Contains("/Patient/") ? Fhir(PatientJson)
+                : Json(tokenJson);
         });
 
     private static HttpResponseMessage Fhir(string body) =>
-        new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/fhir+json") };
+        new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/fhir+json"),
+        };
 
     private static SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
-        new(new StubClientFactory(new StubHandler(respond)),
+        new(
+            new StubClientFactory(new StubHandler(respond)),
             Options.Create(new SmartOptions { TrustedIssuers = [Iss] }),
-            NullLogger<SmartLaunch>.Instance);
+            NullLogger<SmartLaunch>.Instance
+        );
 
-    private static HttpResponseMessage Json(string body, HttpStatusCode status = HttpStatusCode.OK) =>
-        new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    private static HttpResponseMessage Json(
+        string body,
+        HttpStatusCode status = HttpStatusCode.OK
+    ) => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+        : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
-            Task.FromResult(respond(request));
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken ct
+        ) => Task.FromResult(respond(request));
     }
 
     private sealed class StubClientFactory(HttpMessageHandler handler) : IHttpClientFactory

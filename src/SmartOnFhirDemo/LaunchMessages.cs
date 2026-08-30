@@ -36,44 +36,45 @@ public static class LaunchMessages
     public static string AuthorizationDenied(string reason) =>
         $"The EHR refused the authorization request: {reason}";
 
-    public static string For(LaunchOutcome outcome) => outcome switch
-    {
-        LaunchOutcome.MissingParameters => MissingLaunchParameters,
+    public static string For(LaunchOutcome outcome) =>
+        outcome switch
+        {
+            LaunchOutcome.MissingParameters => MissingLaunchParameters,
 
-        LaunchOutcome.UntrustedIssuer => UntrustedIssuer,
+            LaunchOutcome.UntrustedIssuer => UntrustedIssuer,
 
-        LaunchOutcome.DiscoveryFailed(var wellKnown, var reason) =>
-            $"Could not read the SMART configuration from {wellKnown} — {reason}",
+            LaunchOutcome.DiscoveryFailed(var wellKnown, var reason) =>
+                $"Could not read the SMART configuration from {wellKnown} — {reason}",
 
-        _ => throw new UnreachableException($"{outcome.GetType().Name} is not a failure."),
-    };
+            _ => throw new UnreachableException($"{outcome.GetType().Name} is not a failure."),
+        };
 
-    public static string For(CallbackOutcome outcome) => outcome switch
-    {
-        CallbackOutcome.AuthorizationDenied(var reason) => AuthorizationDenied(reason),
+    public static string For(CallbackOutcome outcome) =>
+        outcome switch
+        {
+            CallbackOutcome.AuthorizationDenied(var reason) => AuthorizationDenied(reason),
 
-        CallbackOutcome.MissingParameters => MissingCallbackParameters,
+            CallbackOutcome.MissingParameters => MissingCallbackParameters,
 
-        CallbackOutcome.UnknownLaunch => UnknownLaunch,
+            CallbackOutcome.UnknownLaunch => UnknownLaunch,
 
-        CallbackOutcome.TokenExchangeFailed(var status, var reason) =>
-            $"Token exchange failed ({status}): {reason}",
+            CallbackOutcome.TokenExchangeFailed(var status, var reason) =>
+                $"Token exchange failed ({status}): {reason}",
 
-        CallbackOutcome.NoAccessToken =>
-            "The token endpoint returned no access token.",
+            CallbackOutcome.NoAccessToken => "The token endpoint returned no access token.",
 
-        CallbackOutcome.NoPatientContext =>
-            "The token response carried no patient context. Use a Provider EHR Launch with a patient selected.",
+            CallbackOutcome.NoPatientContext =>
+                "The token response carried no patient context. Use a Provider EHR Launch with a patient selected.",
 
-        CallbackOutcome.PatientNotFound(var iss, var patientId) =>
-            $"Patient/{patientId} was not found on {iss}.",
+            CallbackOutcome.PatientNotFound(var iss, var patientId) =>
+                $"Patient/{patientId} was not found on {iss}.",
 
-        CallbackOutcome.PatientReadFailed(var status, var reason) =>
-            $"The FHIR server returned {status}: {reason}",
+            CallbackOutcome.PatientReadFailed(var status, var reason) =>
+                $"The FHIR server returned {status}: {reason}",
 
-        CallbackOutcome.IncompatibleFhirVersion(var iss, var reason) =>
-            $"The FHIR server at {iss} is not compatible with FHIR {ModelInfo.Version}: {reason}",
+            CallbackOutcome.IncompatibleFhirVersion(var iss, var reason) =>
+                $"The FHIR server at {iss} is not compatible with FHIR {ModelInfo.Version}: {reason}",
 
-        _ => throw new UnreachableException($"{outcome.GetType().Name} is not a failure."),
-    };
+            _ => throw new UnreachableException($"{outcome.GetType().Name} is not a failure."),
+        };
 }

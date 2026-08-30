@@ -22,8 +22,10 @@ public class AppFixture : IAsyncDisposable
 
     private readonly WebApplicationFactory<Program> _app =
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(TrustedIssuers())));
+            builder.ConfigureAppConfiguration(
+                (_, config) => config.AddInMemoryCollection(TrustedIssuers())
+            )
+        );
 
     /// <summary>
     /// Replaces the shipped allowlist so the tests launch against their own servers.

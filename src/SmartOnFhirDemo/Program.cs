@@ -16,30 +16,35 @@ app.MapRazorPages();
 // the FHIR base URL (iss) and an opaque launch id. SmartLaunch does the protocol; this
 // endpoint holds the launch until the EHR redirects back, and turns the outcome into
 // a response.
-app.MapGet("/launch", async (
-    string? iss,
-    string? launch,
-    HttpRequest request,
-    SmartLaunch smart,
-    IMemoryCache cache,
-    CancellationToken ct) =>
-{
-    var redirectUri = $"{request.Scheme}://{request.Host}/callback";
-
-    var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
-
-    return outcome is LaunchOutcome.Prepared prepared
-        ? Remember(prepared)
-        : Fail(LaunchMessages.For(outcome));
-
-    IResult Remember(LaunchOutcome.Prepared prepared)
+app.MapGet(
+    "/launch",
+    async (
+        string? iss,
+        string? launch,
+        HttpRequest request,
+        SmartLaunch smart,
+        IMemoryCache cache,
+        CancellationToken ct
+    ) =>
     {
-        cache.Remember(prepared);
-        return Results.Redirect(prepared.AuthorizeUrl);
-    }
+        var redirectUri = $"{request.Scheme}://{request.Host}/callback";
 
-    static IResult Fail(string message) => Results.Redirect($"/error?message={Uri.EscapeDataString(message)}");
-});
+        var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
+
+        return outcome is LaunchOutcome.Prepared prepared
+            ? Remember(prepared)
+            : Fail(LaunchMessages.For(outcome));
+
+        IResult Remember(LaunchOutcome.Prepared prepared)
+        {
+            cache.Remember(prepared);
+            return Results.Redirect(prepared.AuthorizeUrl);
+        }
+
+        static IResult Fail(string message) =>
+            Results.Redirect($"/error?message={Uri.EscapeDataString(message)}");
+    }
+);
 
 app.Run();
 

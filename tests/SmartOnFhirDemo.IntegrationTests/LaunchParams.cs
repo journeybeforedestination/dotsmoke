@@ -24,23 +24,25 @@ internal static class LaunchParams
         [
             ProviderEhrLaunch,
             patientId,
-            "",                     // provider
-            "AUTO",                 // encounter
-            1,                      // skip_login  — no login screen, so no browser needed
-            1,                      // skip_auth   — no consent screen either
-            0,                      // sim_ehr
-            "",                     // scope       — the app asks for its own
-            "",                     // redirect_uris — unregistered, so any is accepted
-            "",                     // client_id
-            "",                     // client_secret
+            "", // provider
+            "AUTO", // encounter
+            1, // skip_login  — no login screen, so no browser needed
+            1, // skip_auth   — no consent screen either
+            0, // sim_ehr
+            "", // scope       — the app asks for its own
+            "", // redirect_uris — unregistered, so any is accepted
+            "", // client_id
+            "", // client_secret
             authError,
-            "",                     // jwks_url
-            "",                     // jwks
+            "", // jwks_url
+            "", // jwks
             PublicClient,
-            PkceAlwaysRequired,     // make the launcher verify our S256 challenge
-            "",                     // fhir_server — the launcher's default
+            PkceAlwaysRequired, // make the launcher verify our S256 challenge
+            "", // fhir_server — the launcher's default
         ];
 
-        return WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(fields)));
+        return WebEncoders.Base64UrlEncode(
+            Encoding.UTF8.GetBytes(JsonSerializer.Serialize(fields))
+        );
     }
 }

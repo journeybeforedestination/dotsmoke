@@ -27,7 +27,8 @@ public abstract record LaunchOutcome
         string State,
         LaunchState Session,
         string WellKnownUrl,
-        string ConfigurationJson) : LaunchOutcome;
+        string ConfigurationJson
+    ) : LaunchOutcome;
 
     public sealed record MissingParameters : LaunchOutcome;
 
@@ -53,7 +54,8 @@ public abstract record CallbackOutcome
         string RawJson,
         TokenFacts Token,
         string TokenJson,
-        string PatientUrl) : CallbackOutcome;
+        string PatientUrl
+    ) : CallbackOutcome;
 
     public sealed record MissingParameters : CallbackOutcome;
 
@@ -85,13 +87,18 @@ public abstract record CallbackOutcome
 public sealed class SmartLaunch(
     IHttpClientFactory clients,
     IOptions<SmartOptions> options,
-    ILogger<SmartLaunch> log)
+    ILogger<SmartLaunch> log
+)
 {
     private SmartOptions Options => options.Value;
 
     /// <summary>Discover the EHR's OAuth endpoints and build the authorization request.</summary>
     public async Task<LaunchOutcome> BeginAsync(
-        string? iss, string? launch, string redirectUri, CancellationToken ct)
+        string? iss,
+        string? launch,
+        string redirectUri,
+        CancellationToken ct
+    )
     {
         if (string.IsNullOrWhiteSpace(iss) || string.IsNullOrWhiteSpace(launch))
             return new LaunchOutcome.MissingParameters();
@@ -117,14 +124,18 @@ public sealed class SmartLaunch(
             configJson = await discovery.Content.ReadAsStringAsync(ct);
             config = JsonSerializer.Deserialize<SmartConfiguration>(configJson);
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or NotSupportedException)
+        catch (Exception ex)
+            when (ex is HttpRequestException or JsonException or NotSupportedException)
         {
             log.LogWarning(ex, "SMART discovery failed for {WellKnown}", wellKnown);
             return new LaunchOutcome.DiscoveryFailed(wellKnown, ex.Message);
         }
 
         if (config is null)
-            return new LaunchOutcome.DiscoveryFailed(wellKnown, "the server returned an empty configuration");
+            return new LaunchOutcome.DiscoveryFailed(
+                wellKnown,
+                "the server returned an empty configuration"
+            );
 
         var (verifier, challenge) = Smart.NewPkce();
         var state = Smart.NewState();
@@ -134,7 +145,8 @@ public sealed class SmartLaunch(
             state,
             new LaunchState(iss, config.TokenEndpoint, verifier, redirectUri),
             wellKnown,
-            configJson);
+            configJson
+        );
     }
 
     /// <summary>
@@ -148,7 +160,8 @@ public sealed class SmartLaunch(
         string? error,
         string? errorDescription,
         LaunchState? launch,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         if (!string.IsNullOrEmpty(error))
             return new CallbackOutcome.AuthorizationDenied(errorDescription ?? error);
@@ -159,14 +172,16 @@ public sealed class SmartLaunch(
         if (launch is null)
             return new CallbackOutcome.UnknownLaunch();
 
-        using var form = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["grant_type"] = "authorization_code",
-            ["code"] = code,
-            ["redirect_uri"] = launch.RedirectUri,
-            ["code_verifier"] = launch.CodeVerifier,
-            ["client_id"] = Options.ClientId,
-        });
+        using var form = new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code",
+                ["code"] = code,
+                ["redirect_uri"] = launch.RedirectUri,
+                ["code_verifier"] = launch.CodeVerifier,
+                ["client_id"] = Options.ClientId,
+            }
+        );
 
         using var response = await clients.CreateClient().PostAsync(launch.TokenEndpoint, form, ct);
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -198,18 +213,29 @@ public sealed class SmartLaunch(
     }
 
     private async Task<CallbackOutcome> ReadPatientAsync(
-        string iss, TokenResponse token, string tokenJson, CancellationToken ct)
+        string iss,
+        TokenResponse token,
+        string tokenJson,
+        CancellationToken ct
+    )
     {
         var patientUrl = $"{iss.TrimEnd('/')}/Patient/{token.Patient}";
 
         var http = clients.CreateClient();
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            token.AccessToken
+        );
 
-        using var fhir = new FhirClient(iss, http, new FhirClientSettings
-        {
-            PreferredFormat = ResourceFormat.Json,
-            VerifyFhirVersion = true,
-        });
+        using var fhir = new FhirClient(
+            iss,
+            http,
+            new FhirClientSettings
+            {
+                PreferredFormat = ResourceFormat.Json,
+                VerifyFhirVersion = true,
+            }
+        );
 
         try
         {
@@ -222,12 +248,16 @@ public sealed class SmartLaunch(
                     patient.ToJson(pretty: true),
                     TokenFacts.From(token),
                     tokenJson,
-                    patientUrl);
+                    patientUrl
+                );
         }
         catch (FhirOperationException ex)
         {
             log.LogWarning(ex, "Reading Patient/{PatientId} failed", token.Patient);
-            return new CallbackOutcome.PatientReadFailed((int)ex.Status, Describe(ex.Outcome) ?? ex.Message);
+            return new CallbackOutcome.PatientReadFailed(
+                (int)ex.Status,
+                Describe(ex.Outcome) ?? ex.Message
+            );
         }
         catch (NotSupportedException ex)
         {
@@ -238,6 +268,9 @@ public sealed class SmartLaunch(
 
     private static string? Describe(OperationOutcome? outcome) =>
         outcome?.Issue is { Count: > 0 } issues
-            ? string.Join("; ", issues.Select(i => i.Details?.Text ?? i.Diagnostics ?? i.Code.GetLiteral()))
+            ? string.Join(
+                "; ",
+                issues.Select(i => i.Details?.Text ?? i.Diagnostics ?? i.Code.GetLiteral())
+            )
             : null;
 }

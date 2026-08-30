@@ -6,17 +6,23 @@ namespace SmartOnFhirDemo.IntegrationTests;
 /// dispatches each hop to whichever of the two owns the host, and follows the
 /// redirects itself, so a test can express a whole launch as a single GET.
 /// </summary>
-internal sealed class LaunchChainHandler(HttpMessageHandler appHandler, string appHost) : HttpMessageHandler
+internal sealed class LaunchChainHandler(HttpMessageHandler appHandler, string appHost)
+    : HttpMessageHandler
 {
     private const int MaxHops = 10;
 
     private readonly HttpMessageInvoker _app = new(appHandler);
+
     // Redirects must come back here to be routed, not be followed inside one handler:
     // the launcher redirects to the app, which only this class knows how to reach.
-    private readonly HttpMessageInvoker _network = new(new SocketsHttpHandler { AllowAutoRedirect = false });
+    private readonly HttpMessageInvoker _network = new(
+        new SocketsHttpHandler { AllowAutoRedirect = false }
+    );
 
     protected override async Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request, CancellationToken cancellationToken)
+        HttpRequestMessage request,
+        CancellationToken cancellationToken
+    )
     {
         var current = request;
 
@@ -33,7 +39,8 @@ internal sealed class LaunchChainHandler(HttpMessageHandler appHandler, string a
         }
 
         throw new InvalidOperationException(
-            $"The launch did not settle within {MaxHops} redirects, starting from {request.RequestUri}.");
+            $"The launch did not settle within {MaxHops} redirects, starting from {request.RequestUri}."
+        );
     }
 
     private static bool IsRedirect(System.Net.HttpStatusCode status) =>

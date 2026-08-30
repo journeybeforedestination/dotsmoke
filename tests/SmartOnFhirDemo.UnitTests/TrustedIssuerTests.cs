@@ -28,9 +28,12 @@ public class TrustedIssuerTests
     [Fact]
     public void Any_entry_in_the_list_may_match()
     {
-        Assert.True(Smart.IsTrustedIssuer(
-            "https://ehr.example/fhir",
-            ["https://other.example", "https://ehr.example", "https://third.example"]));
+        Assert.True(
+            Smart.IsTrustedIssuer(
+                "https://ehr.example/fhir",
+                ["https://other.example", "https://ehr.example", "https://third.example"]
+            )
+        );
     }
 
     // ---- Impersonation ----------------------------------------------------

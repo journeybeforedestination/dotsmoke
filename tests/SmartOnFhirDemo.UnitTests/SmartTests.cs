@@ -16,7 +16,9 @@ public class SmartTests
     {
         var (verifier, challenge) = Smart.NewPkce();
 
-        var expected = WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
+        var expected = WebEncoders.Base64UrlEncode(
+            SHA256.HashData(Encoding.ASCII.GetBytes(verifier))
+        );
         Assert.Equal(expected, challenge);
     }
 
@@ -48,12 +50,15 @@ public class SmartTests
         var states = Enumerable.Range(0, 50).Select(_ => Smart.NewState()).ToList();
 
         Assert.Equal(states.Count, states.Distinct().Count());
-        Assert.All(states, s =>
-        {
-            Assert.DoesNotContain('+', s);
-            Assert.DoesNotContain('/', s);
-            Assert.DoesNotContain('=', s);
-        });
+        Assert.All(
+            states,
+            s =>
+            {
+                Assert.DoesNotContain('+', s);
+                Assert.DoesNotContain('/', s);
+                Assert.DoesNotContain('=', s);
+            }
+        );
     }
 
     [Fact]
@@ -74,7 +79,8 @@ public class SmartTests
     {
         var redacted = Smart.Redact(
             """{"access_token":"the-token","token_type":"Bearer","expires_in":3600,"patient":"pat-1"}""",
-            "access_token");
+            "access_token"
+        );
 
         Assert.DoesNotContain("the-token", redacted);
         Assert.Contains(Smart.Withheld, redacted);
@@ -88,7 +94,10 @@ public class SmartTests
     {
         var redacted = Smart.Redact(
             """{"access_token":"a","refresh_token":"r","id_token":"i","scope":"launch"}""",
-            "access_token", "refresh_token", "id_token");
+            "access_token",
+            "refresh_token",
+            "id_token"
+        );
 
         Assert.Equal(3, Regex.Matches(redacted, Regex.Escape(Smart.Withheld)).Count);
         Assert.Contains("launch", redacted);
@@ -118,7 +127,8 @@ public class SmartTests
 
     private static Dictionary<string, string> AuthorizeQuery(
         string authorizationEndpoint = "https://ehr.example/authorize",
-        string scopes = "launch patient/Patient.read")
+        string scopes = "launch patient/Patient.read"
+    )
     {
         var url = Smart.BuildAuthorizeUrl(
             new SmartConfiguration(authorizationEndpoint, "https://ehr.example/token"),
@@ -127,9 +137,11 @@ public class SmartTests
             iss: Iss,
             launch: "launch-123",
             state: "state-456",
-            codeChallenge: "challenge-789");
+            codeChallenge: "challenge-789"
+        );
 
-        return QueryHelpers.ParseQuery(new Uri(url).Query)
+        return QueryHelpers
+            .ParseQuery(new Uri(url).Query)
             .ToDictionary(p => p.Key, p => p.Value.ToString());
     }
 
@@ -175,7 +187,11 @@ public class SmartTests
             new SmartConfiguration("https://ehr.example/authorize", "https://ehr.example/token"),
             new SmartOptions { ClientId = "id", Scopes = "launch patient/Patient.read" },
             redirectUri: "http://localhost:5000/callback",
-            iss: Iss, launch: "l", state: "s", codeChallenge: "c");
+            iss: Iss,
+            launch: "l",
+            state: "s",
+            codeChallenge: "c"
+        );
 
         Assert.DoesNotContain("scope=launch patient", url);
         Assert.Equal("launch patient/Patient.read", AuthorizeQuery()["scope"]);

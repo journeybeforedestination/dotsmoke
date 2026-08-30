@@ -93,11 +93,17 @@ public class LaunchTranscriptTests
         var step = LaunchTranscript.TheTokenResponse(Completed());
 
         AssertAbsent(AccessToken, step);
-        Assert.Equal(Smart.Withheld, Assert.Single(step.Fields, f => f.Label == "access_token").Value);
+        Assert.Equal(
+            Smart.Withheld,
+            Assert.Single(step.Fields, f => f.Label == "access_token").Value
+        );
 
         Assert.Equal("Bearer", Assert.Single(step.Fields, f => f.Label == "token_type").Value);
         Assert.Contains("3600", Assert.Single(step.Fields, f => f.Label == "expires_in").Value);
-        Assert.Equal("launch patient/Patient.read", Assert.Single(step.Fields, f => f.Label == "scope").Value);
+        Assert.Equal(
+            "launch patient/Patient.read",
+            Assert.Single(step.Fields, f => f.Label == "scope").Value
+        );
         Assert.Equal("pat-1", Assert.Single(step.Fields, f => f.Label == "patient").Value);
     }
 
@@ -107,8 +113,14 @@ public class LaunchTranscriptTests
         var step = LaunchTranscript.ThePatientRead(Completed());
 
         AssertAbsent(AccessToken, step);
-        Assert.Contains(Smart.Withheld, Assert.Single(step.Fields, f => f.Label == "Authorization").Value);
-        Assert.Equal($"{Iss}/Patient/pat-1", Assert.Single(step.Fields, f => f.Label == "GET").Value);
+        Assert.Contains(
+            Smart.Withheld,
+            Assert.Single(step.Fields, f => f.Label == "Authorization").Value
+        );
+        Assert.Equal(
+            $"{Iss}/Patient/pat-1",
+            Assert.Single(step.Fields, f => f.Label == "GET").Value
+        );
     }
 
     // ---- Plumbing ---------------------------------------------------------
@@ -116,11 +128,14 @@ public class LaunchTranscriptTests
     /// <summary>Nowhere in the step: not a value, not a note, not the raw payload.</summary>
     private static void AssertAbsent(string secret, LaunchStep step)
     {
-        Assert.All(step.Fields, field =>
-        {
-            Assert.DoesNotContain(secret, field.Value);
-            Assert.DoesNotContain(secret, field.Note);
-        });
+        Assert.All(
+            step.Fields,
+            field =>
+            {
+                Assert.DoesNotContain(secret, field.Value);
+                Assert.DoesNotContain(secret, field.Note);
+            }
+        );
 
         Assert.DoesNotContain(secret, step.Payload ?? "");
     }
@@ -128,29 +143,46 @@ public class LaunchTranscriptTests
     private static IReadOnlyList<LaunchStep> Steps(LaunchOutcome.Prepared prepared) =>
         LaunchTranscript.BeforeTheRedirect(prepared);
 
-    private static readonly SmartConfiguration Configuration =
-        new("https://ehr.example/authorize", "https://ehr.example/token");
+    private static readonly SmartConfiguration Configuration = new(
+        "https://ehr.example/authorize",
+        "https://ehr.example/token"
+    );
 
     private const string ConfigurationJson = """
         {"authorization_endpoint":"https://ehr.example/authorize","token_endpoint":"https://ehr.example/token"}
         """;
 
-    private static readonly LaunchState Session =
-        new(Iss, Configuration.TokenEndpoint, Verifier, RedirectUri);
+    private static readonly LaunchState Session = new(
+        Iss,
+        Configuration.TokenEndpoint,
+        Verifier,
+        RedirectUri
+    );
 
     /// <summary>A prepared launch with a real authorize URL, built the way BeginAsync builds one.</summary>
     private static LaunchOutcome.Prepared Prepared() =>
-        new(Smart.BuildAuthorizeUrl(
-                Configuration, new SmartOptions(), RedirectUri, Iss, Launch, State, Challenge),
+        new(
+            Smart.BuildAuthorizeUrl(
+                Configuration,
+                new SmartOptions(),
+                RedirectUri,
+                Iss,
+                Launch,
+                State,
+                Challenge
+            ),
             State,
             Session,
             $"{Iss}/.well-known/smart-configuration",
-            ConfigurationJson);
+            ConfigurationJson
+        );
 
     private static CallbackOutcome.Completed Completed() =>
-        new(new PatientSummary("Alex Rivera", "Female", null, null, null, null, null),
+        new(
+            new PatientSummary("Alex Rivera", "Female", null, null, null, null, null),
             """{"resourceType":"Patient","id":"pat-1"}""",
             new TokenFacts("Bearer", 3600, "launch patient/Patient.read", "pat-1", null),
             $$"""{"access_token":"{{Smart.Withheld}}","token_type":"Bearer","patient":"pat-1"}""",
-            $"{Iss}/Patient/pat-1");
+            $"{Iss}/Patient/pat-1"
+        );
 }

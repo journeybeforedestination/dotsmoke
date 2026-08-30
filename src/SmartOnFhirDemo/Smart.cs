@@ -23,20 +23,34 @@ public sealed class SmartOptions
 /// <summary>The subset of <c>.well-known/smart-configuration</c> this app needs.</summary>
 public sealed record SmartConfiguration(
     [property: JsonPropertyName("authorization_endpoint")] string AuthorizationEndpoint,
-    [property: JsonPropertyName("token_endpoint")] string TokenEndpoint);
+    [property: JsonPropertyName("token_endpoint")] string TokenEndpoint
+);
 
 /// <summary>What must survive the round trip through the EHR, keyed by the OAuth <c>state</c>.</summary>
-public sealed record LaunchState(string Iss, string TokenEndpoint, string CodeVerifier, string RedirectUri);
+public sealed record LaunchState(
+    string Iss,
+    string TokenEndpoint,
+    string CodeVerifier,
+    string RedirectUri
+);
 
 /// <summary>The subset of the token response this app needs.</summary>
 public sealed record TokenResponse(
     [property: JsonPropertyName("access_token")] string AccessToken,
-    [property: JsonPropertyName("patient")] string? Patient)
+    [property: JsonPropertyName("patient")] string? Patient
+)
 {
-    [JsonPropertyName("token_type")] public string? TokenType { get; init; }
-    [JsonPropertyName("expires_in")] public int? ExpiresIn { get; init; }
-    [JsonPropertyName("scope")] public string? Scope { get; init; }
-    [JsonPropertyName("encounter")] public string? Encounter { get; init; }
+    [JsonPropertyName("token_type")]
+    public string? TokenType { get; init; }
+
+    [JsonPropertyName("expires_in")]
+    public int? ExpiresIn { get; init; }
+
+    [JsonPropertyName("scope")]
+    public string? Scope { get; init; }
+
+    [JsonPropertyName("encounter")]
+    public string? Encounter { get; init; }
 }
 
 /// <summary>
@@ -45,7 +59,12 @@ public sealed record TokenResponse(
 /// cannot leak what it was never handed.
 /// </summary>
 public sealed record TokenFacts(
-    string? TokenType, int? ExpiresIn, string? Scope, string? Patient, string? Encounter)
+    string? TokenType,
+    int? ExpiresIn,
+    string? Scope,
+    string? Patient,
+    string? Encounter
+)
 {
     public static TokenFacts From(TokenResponse token) =>
         new(token.TokenType, token.ExpiresIn, token.Scope, token.Patient, token.Encounter);
@@ -67,7 +86,8 @@ public static class Smart
         Origin(iss) is { } origin
         && trustedIssuers.Any(trusted =>
             Origin(trusted) is { } candidate
-            && string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase));
+            && string.Equals(candidate, origin, StringComparison.OrdinalIgnoreCase)
+        );
 
     /// <summary>Scheme, host and port of an absolute http(s) URL, or null if it is neither.</summary>
     private static string? Origin(string? url) =>
@@ -129,19 +149,23 @@ public static class Smart
         string iss,
         string launch,
         string state,
-        string codeChallenge) =>
-        QueryHelpers.AddQueryString(config.AuthorizationEndpoint, new Dictionary<string, string?>
-        {
-            ["response_type"] = "code",
-            ["client_id"] = options.ClientId,
-            ["redirect_uri"] = redirectUri,
-            ["launch"] = launch,
-            ["scope"] = options.Scopes,
-            ["state"] = state,
-            ["aud"] = iss,
-            ["code_challenge"] = codeChallenge,
-            ["code_challenge_method"] = "S256",
-        });
+        string codeChallenge
+    ) =>
+        QueryHelpers.AddQueryString(
+            config.AuthorizationEndpoint,
+            new Dictionary<string, string?>
+            {
+                ["response_type"] = "code",
+                ["client_id"] = options.ClientId,
+                ["redirect_uri"] = redirectUri,
+                ["launch"] = launch,
+                ["scope"] = options.Scopes,
+                ["state"] = state,
+                ["aud"] = iss,
+                ["code_challenge"] = codeChallenge,
+                ["code_challenge_method"] = "S256",
+            }
+        );
 
     private static string Base64Url(byte[] bytes) => WebEncoders.Base64UrlEncode(bytes);
 }

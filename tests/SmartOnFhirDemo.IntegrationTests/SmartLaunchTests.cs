@@ -17,7 +17,15 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         "Needs a running SMART App Launcher; set " + Launcher.UrlVariable + " (see the README).";
 
     private static readonly string[] SummaryLabels =
-        ["Name", "Gender", "Birth date", "MRN", "Address", "Phone", "Marital status"];
+    [
+        "Name",
+        "Gender",
+        "Birth date",
+        "MRN",
+        "Address",
+        "Phone",
+        "Marital status",
+    ];
 
     private const string Absent = "—";
 
@@ -25,14 +33,17 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     private async Task<string> LaunchAsync(string authError = "")
     {
         var launch = LaunchParams.Encode(launcher.PatientId, authError);
-        var url = $"/launch?iss={Uri.EscapeDataString(launcher.Iss(launch))}" +
-                  $"&launch={Uri.EscapeDataString(launch)}";
+        var url =
+            $"/launch?iss={Uri.EscapeDataString(launcher.Iss(launch))}"
+            + $"&launch={Uri.EscapeDataString(launch)}";
 
         using var client = launcher.CreateChainClient();
         using var response = await client.GetAsync(url);
 
-        Assert.True(response.IsSuccessStatusCode,
-            $"The launch ended at {(int)response.StatusCode}.");
+        Assert.True(
+            response.IsSuccessStatusCode,
+            $"The launch ended at {(int)response.StatusCode}."
+        );
 
         return await response.Content.ReadAsStringAsync();
     }
@@ -103,22 +114,30 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     private async Task<(string Opening, string Pause)> LearnAsync()
     {
         var launch = LaunchParams.Encode(launcher.PatientId);
-        var url = $"/learn?iss={Uri.EscapeDataString(launcher.Iss(launch))}" +
-                  $"&launch={Uri.EscapeDataString(launch)}";
+        var url =
+            $"/learn?iss={Uri.EscapeDataString(launcher.Iss(launch))}"
+            + $"&launch={Uri.EscapeDataString(launch)}";
 
         using var client = launcher.CreateChainClient();
 
         using var opening = await client.GetAsync(url);
-        Assert.True(opening.IsSuccessStatusCode, $"The narrated launch ended at {(int)opening.StatusCode}.");
+        Assert.True(
+            opening.IsSuccessStatusCode,
+            $"The narrated launch ended at {(int)opening.StatusCode}."
+        );
         var openingHtml = await opening.Content.ReadAsStringAsync();
 
         // The continue button leads where the plain launch would have sent a 302.
         var authorize = WebUtility.HtmlDecode(
-            Regex.Match(openingHtml, "class=\"button\" href=\"(?<url>[^\"]+)\"").Groups["url"].Value);
+            Regex.Match(openingHtml, "class=\"button\" href=\"(?<url>[^\"]+)\"").Groups["url"].Value
+        );
         Assert.NotEmpty(authorize);
 
         using var pause = await client.GetAsync(authorize);
-        Assert.True(pause.IsSuccessStatusCode, $"The EHR round trip ended at {(int)pause.StatusCode}.");
+        Assert.True(
+            pause.IsSuccessStatusCode,
+            $"The EHR round trip ended at {(int)pause.StatusCode}."
+        );
 
         return (openingHtml, await pause.Content.ReadAsStringAsync());
     }
@@ -159,7 +178,8 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         var match = Regex.Match(
             html,
             $"<dt>{Regex.Escape(label)}</dt>\\s*<dd>(?<value>.*?)</dd>",
-            RegexOptions.Singleline);
+            RegexOptions.Singleline
+        );
 
         Assert.True(match.Success, $"The summary had no '{label}' row.");
         return match.Groups["value"].Value.Trim();

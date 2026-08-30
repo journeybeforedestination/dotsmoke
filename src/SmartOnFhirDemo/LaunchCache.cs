@@ -30,19 +30,23 @@ public static class LaunchCache
     /// <summary>Takes the launch this callback belongs to out of the cache. It is single use.</summary>
     public static LaunchState? ClaimLaunch(this IMemoryCache cache, string? state)
     {
-        if (cache.PeekLaunch(state) is not { } launch) return null;
+        if (cache.PeekLaunch(state) is not { } launch)
+            return null;
 
         cache.Remove(Smart.CacheKey(state!));
         return launch;
     }
 
     public static void RememberTranscript(
-        this IMemoryCache cache, string state, CallbackOutcome.Completed completed) =>
-        cache.Set(Smart.TranscriptKey(state), completed, Lifetime);
+        this IMemoryCache cache,
+        string state,
+        CallbackOutcome.Completed completed
+    ) => cache.Set(Smart.TranscriptKey(state), completed, Lifetime);
 
     /// <summary>The finished launch a walkthrough page is reading, or null once it has expired.</summary>
     public static CallbackOutcome.Completed? Transcript(this IMemoryCache cache, string? state) =>
         string.IsNullOrEmpty(state) ? null
-        : cache.TryGetValue(Smart.TranscriptKey(state), out CallbackOutcome.Completed? completed) ? completed
+        : cache.TryGetValue(Smart.TranscriptKey(state), out CallbackOutcome.Completed? completed)
+            ? completed
         : null;
 }

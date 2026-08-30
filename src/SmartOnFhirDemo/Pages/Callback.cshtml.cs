@@ -19,10 +19,17 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : PageModel
         string? state,
         string? error,
         [FromQuery(Name = "error_description")] string? errorDescription,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var outcome = await smart.CompleteAsync(
-            code, state, error, errorDescription, cache.ClaimLaunch(state), ct);
+            code,
+            state,
+            error,
+            errorDescription,
+            cache.ClaimLaunch(state),
+            ct
+        );
 
         return outcome is CallbackOutcome.Completed completed
             ? Render(completed)

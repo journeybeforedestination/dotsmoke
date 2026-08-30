@@ -42,7 +42,9 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [Fact]
     public async Task A_launch_against_an_unreachable_issuer_is_reported()
     {
-        var html = await app.GetAsync($"/launch?iss={AppFixture.UnreachableIssuer}/fhir&launch=irrelevant");
+        var html = await app.GetAsync(
+            $"/launch?iss={AppFixture.UnreachableIssuer}/fhir&launch=irrelevant"
+        );
 
         Assert.Contains("Could not read the SMART configuration", html);
     }
