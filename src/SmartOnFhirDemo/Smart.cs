@@ -11,7 +11,15 @@ namespace SmartOnFhirDemo;
 public sealed class SmartOptions
 {
     public string ClientId { get; set; } = "smart-on-fhir-demo";
-    public string Scopes { get; set; } = "launch patient/Patient.read";
+
+    /// <summary>
+    /// What the app asks the EHR for. <c>openid fhirUser</c> is what makes the EHR
+    /// return an id_token naming the user who started the launch; <c>user/Practitioner.read</c>
+    /// is what lets that name be read. Both are asked for narrowly rather than as
+    /// <c>user/*.read</c>, because this app only handles a provider EHR launch.
+    /// </summary>
+    public string Scopes { get; set; } =
+        "launch openid fhirUser patient/Patient.read user/Practitioner.read";
 
     /// <summary>
     /// The EHRs this app will accept a launch from. A real app is registered with each
@@ -20,10 +28,16 @@ public sealed class SmartOptions
     public string[] TrustedIssuers { get; set; } = ["https://launch.smarthealthit.org"];
 }
 
-/// <summary>The subset of <c>.well-known/smart-configuration</c> this app needs.</summary>
+/// <summary>
+/// The subset of <c>.well-known/smart-configuration</c> this app needs. The last two are
+/// nullable because a server need not publish them: without both, an id_token cannot be
+/// validated, and the app says so rather than trusting it.
+/// </summary>
 public sealed record SmartConfiguration(
     [property: JsonPropertyName("authorization_endpoint")] string AuthorizationEndpoint,
-    [property: JsonPropertyName("token_endpoint")] string TokenEndpoint
+    [property: JsonPropertyName("token_endpoint")] string TokenEndpoint,
+    [property: JsonPropertyName("issuer")] string? Issuer = null,
+    [property: JsonPropertyName("jwks_uri")] string? JwksUri = null
 );
 
 /// <summary>What must survive the round trip through the EHR, keyed by the OAuth <c>state</c>.</summary>
@@ -31,7 +45,9 @@ public sealed record LaunchState(
     string Iss,
     string TokenEndpoint,
     string CodeVerifier,
-    string RedirectUri
+    string RedirectUri,
+    string? Issuer = null,
+    string? JwksUri = null
 );
 
 /// <summary>The subset of the token response this app needs.</summary>
@@ -40,6 +56,13 @@ public sealed record TokenResponse(
     [property: JsonPropertyName("patient")] string? Patient
 )
 {
+    /// <summary>
+    /// Present only when the EHR granted <c>openid</c>. It is a credential in its own
+    /// right, so like the access token it is never carried past <see cref="SmartLaunch"/>.
+    /// </summary>
+    [JsonPropertyName("id_token")]
+    public string? IdToken { get; init; }
+
     [JsonPropertyName("token_type")]
     public string? TokenType { get; init; }
 

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -404,6 +405,105 @@ public class SmartLaunchTests
         {"authorization_endpoint":"https://ehr.example/authorize","token_endpoint":"https://ehr.example/token"}
         """;
 
+    // ---- Who launched it --------------------------------------------------
+
+    /// <summary>A launch whose EHR publishes both the fields id_token validation needs.</summary>
+    private static readonly LaunchState SsoSession = Session with
+    {
+        Issuer = TestIdTokens.Issuer,
+        JwksUri = "https://ehr.example/keys",
+    };
+
+    private static async Task<CallbackOutcome.Completed> CompleteSso(
+        string tokenJson,
+        LaunchState? session = null,
+        string? jwksJson = null
+    )
+    {
+        var smart = Completing(
+            tokenJson,
+            jwks: jwksJson ?? TestIdTokens.JwksJson(TestIdTokens.Ehr)
+        );
+
+        return Assert.IsType<CallbackOutcome.Completed>(
+            await smart.CompleteAsync(
+                "the-code",
+                "the-state",
+                error: null,
+                errorDescription: null,
+                session ?? SsoSession,
+                TestContext.Current.CancellationToken
+            )
+        );
+    }
+
+    private static string TokenJsonWith(string idToken) =>
+        $$"""
+            {"access_token":"the-access-token","token_type":"Bearer","expires_in":3600,
+             "scope":"launch openid fhirUser patient/Patient.read","patient":"pat-1",
+             "id_token":"{{idToken}}"}
+            """;
+
+    [Fact]
+    public async Task A_validated_id_token_puts_the_launching_user_on_the_outcome()
+    {
+        var completed = await CompleteSso(TokenJsonWith(TestIdTokens.Token()));
+
+        Assert.Null(completed.IdentityUnavailable);
+        Assert.Equal(TestIdTokens.FhirUser, completed.Identity?.FhirUser);
+    }
+
+    [Fact]
+    public async Task A_token_response_without_an_id_token_says_the_scope_was_not_granted()
+    {
+        var completed = await CompleteSso(TokenJson);
+
+        Assert.Null(completed.Identity);
+        Assert.Contains("openid scope", completed.IdentityUnavailable);
+    }
+
+    [Fact]
+    public async Task An_issuer_publishing_no_jwks_uri_leaves_the_id_token_unvalidated_and_unshown()
+    {
+        var completed = await CompleteSso(TokenJsonWith(TestIdTokens.Token()), session: Session);
+
+        Assert.Null(completed.Identity);
+        Assert.Contains("nothing to validate the id_token against", completed.IdentityUnavailable);
+    }
+
+    [Fact]
+    public async Task Keys_that_cannot_be_read_leave_the_identity_unavailable()
+    {
+        var completed = await CompleteSso(TokenJsonWith(TestIdTokens.Token()), jwksJson: "{}");
+
+        Assert.Null(completed.Identity);
+        Assert.Contains("could not be read", completed.IdentityUnavailable);
+    }
+
+    [Fact]
+    public async Task An_id_token_that_fails_validation_is_reported_rather_than_believed()
+    {
+        var forged = TestIdTokens.Token(signedWith: TestIdTokens.Impostor);
+
+        var completed = await CompleteSso(TokenJsonWith(forged));
+
+        Assert.Null(completed.Identity);
+        Assert.Contains("id_token was refused", completed.IdentityUnavailable);
+    }
+
+    [Fact]
+    public async Task An_identity_that_cannot_be_established_still_leaves_the_patient_read()
+    {
+        // The whole point of degrading rather than failing: the summary is the app's job.
+        var completed = await CompleteSso(
+            TokenJsonWith(TestIdTokens.Token(signedWith: TestIdTokens.Impostor))
+        );
+
+        Assert.Equal("Alex Rivera", completed.Summary.Name);
+    }
+
+    // ---- Fixtures ---------------------------------------------------------
+
     private const string AccessToken = "the-access-token";
 
     private const string TokenJson = """
@@ -428,7 +528,8 @@ public class SmartLaunchTests
     /// </summary>
     private static SmartLaunch Completing(
         string tokenJson,
-        Action<HttpRequestMessage>? observe = null
+        Action<HttpRequestMessage>? observe = null,
+        string? jwks = null
     ) =>
         Smart(request =>
         {
@@ -437,6 +538,7 @@ public class SmartLaunchTests
             var path = request.RequestUri!.AbsolutePath;
             return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
                 : path.Contains("/Patient/") ? Fhir(PatientJson)
+                : path.EndsWith("/keys", StringComparison.Ordinal) ? Json(jwks ?? "{}")
                 : Json(tokenJson);
         });
 
@@ -446,12 +548,20 @@ public class SmartLaunchTests
             Content = new StringContent(body, Encoding.UTF8, "application/fhir+json"),
         };
 
-    private static SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
-        new(
-            new StubClientFactory(new StubHandler(respond)),
+    private static SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond)
+    {
+        // One stub serves discovery, the token endpoint, the JWKS and FHIR alike, so a test
+        // decides what the EHR is by what it answers to, not by wiring.
+        var clients = new StubClientFactory(new StubHandler(respond));
+
+        return new SmartLaunch(
+            clients,
             Options.Create(new SmartOptions { TrustedIssuers = [Iss] }),
+            new Jwks(clients, new MemoryCache(new MemoryCacheOptions()), NullLogger<Jwks>.Instance),
+            TestIdTokens.Clock,
             NullLogger<SmartLaunch>.Instance
         );
+    }
 
     private static HttpResponseMessage Json(
         string body,

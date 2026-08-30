@@ -32,7 +32,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// <summary>Runs a whole launch — discovery, authorize, token, patient read — as one GET.</summary>
     private async Task<string> LaunchAsync(string authError = "")
     {
-        var launch = LaunchParams.Encode(launcher.PatientId, authError);
+        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId, authError);
         var url =
             $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
@@ -113,7 +113,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// </summary>
     private async Task<(string Opening, string Pause)> LearnAsync()
     {
-        var launch = LaunchParams.Encode(launcher.PatientId);
+        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
         var url =
             $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";

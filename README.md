@@ -254,13 +254,28 @@ than quietly resolving something new.
   issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
   around a static `Authority` — fights.
 - **Nothing is persisted.** Only the issuer and PKCE verifier survive the
-  redirect, held in `IMemoryCache` under the OAuth `state` for five minutes. The
+  redirect, held in `IMemoryCache` under the OAuth `state` for five minutes — that,
+  and the signing keys an EHR publishes, which are cached for an hour under their
+  own URL because they are public, identical for every launch, and rotate on the
+  order of months. The
   access token is used once and discarded, so `/callback` renders in the same
   request that exchanges the code — and so does `/learn`'s exchange, which is why
   its later steps read a transcript rather than resume a live launch. That
   transcript is the one thing the narrated launch adds to the cache: no credential,
   but patient data, so it expires on the same five minutes and every `/learn` page
   sends `Cache-Control: no-store`.
+- **The id_token is validated, though it need not be.** OIDC Core 3.1.3.7 lets an
+  app skip signature validation when the token arrives over a direct TLS connection
+  to the token endpoint, which is exactly how it arrives here. This app checks the
+  signature against the EHR's published keys anyway, along with `iss`, `aud` and
+  expiry, because the keys are one cached fetch away and an app that only checks
+  when it must is one deployment change away from not checking when it should. The
+  rules live in `IdToken` as a pure function of the token, the keys and the clock;
+  fetching and caching the keys is `Jwks`, kept separate.
+- **Identity degrades, it does not fail.** No `openid` grant, no published
+  `jwks_uri`, unreachable keys, or a token that fails validation each leave the
+  launch standing with a sentence saying why nobody is named. The app's job is the
+  patient summary, and it should not be lost to an absent name.
 - **Credentials are removed where they arrive, not where they render.**
   `SmartLaunch` redacts the token response and projects it into `TokenFacts` before
   returning; the access token is not a field on any outcome. A page cannot leak what
@@ -275,8 +290,13 @@ than quietly resolving something new.
 
 ## Dependencies
 
-The app has one direct package: `Hl7.Fhir.R4` 6.4.0 (BSD-3-Clause). Everything
-else is in-box ASP.NET Core.
+The app has two direct packages: `Hl7.Fhir.R4` 6.4.0 (BSD-3-Clause) for the FHIR
+work, and `Microsoft.IdentityModel.JsonWebTokens` 8.22.0 (MIT) to validate the
+id_token. Everything else is in-box ASP.NET Core.
+
+The second is there rather than hand-rolled deliberately: verifying a JWS against
+a published JWKS is exactly the kind of code that is easy to write and easy to
+write wrongly, and getting it wrong is silent.
 
 The tests add `xunit.v3` and `Microsoft.AspNetCore.Mvc.Testing`, and nothing else
 — no mocking library, no container library. `global.json` opts `dotnet test` into
