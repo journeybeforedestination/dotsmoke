@@ -112,6 +112,19 @@ docker run -d --name smart-launcher -p 8080:80 \
 SMART_LAUNCHER_URL=http://localhost:8080 dotnet test
 ```
 
+Coverage is measured the same way locally:
+
+```bash
+dotnet test --coverage --coverage-settings coverage.config \
+  --coverage-output-format cobertura
+./.github/coverage.sh
+```
+
+`coverage.config` excludes `obj/`, where the logging source generator's output lives.
+It deliberately does not exclude the `.cshtml` files: those read 0% without a launcher
+and near-100% with one, which is a true statement about which tests render them rather
+than noise worth hiding.
+
 Without `SMART_LAUNCHER_URL` those tests skip and the rest still run, so
 `dotnet test` stays green on a machine with no launcher. Prefix the `docker`
 command with `sudo` on a host that keeps its users out of the root-equivalent
@@ -133,7 +146,9 @@ dotnet tool restore
 dotnet csharpier check .                 # no network, no container, under a second
 dotnet restore --locked-mode
 dotnet build --no-restore -warnaserror
-dotnet test --no-build
+dotnet test --no-build --coverage --coverage-settings coverage.config \
+  --coverage-output-format cobertura
+./.github/coverage.sh                    # merge the two reports, report the rate
 ```
 
 That last line runs both projects, not only the fast one. Twenty-two of the
@@ -164,7 +179,8 @@ it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatemen
 `VerifyFhirVersion` means the app fetches that first — along with `/Patient/{id}`.
 
 `.github/dependabot.yml` proposes NuGet and action updates weekly. It does not cover
-`.config/dotnet-tools.json`, so the CSharpier pin is bumped by hand.
+`.config/dotnet-tools.json`, so the CSharpier and `dotnet-coverage` pins are bumped
+by hand.
 
 ## Formatting
 
@@ -318,13 +334,15 @@ The second is there rather than hand-rolled deliberately: verifying a JWS agains
 a published JWKS is exactly the kind of code that is easy to write and easy to
 write wrongly, and getting it wrong is silent.
 
-The tests add `xunit.v3` and `Microsoft.AspNetCore.Mvc.Testing`, and nothing else
-— no mocking library, no container library. `global.json` opts `dotnet test` into
+The tests add `xunit.v3`, `Microsoft.AspNetCore.Mvc.Testing` and
+`Microsoft.Testing.Extensions.CodeCoverage`, and nothing else — no mocking library,
+no container library. `global.json` opts `dotnet test` into
 Microsoft.Testing.Platform, which the .NET 10 SDK requires, and pins the SDK; see
 Analyzers.
 
-One dev-time tool, `CSharpier` 1.3.0 (MIT), is pinned in
-`.config/dotnet-tools.json`. It formats the source and ships in nothing.
+Two dev-time tools are pinned in `.config/dotnet-tools.json`: `CSharpier` 1.3.0
+(MIT), which formats the source, and `dotnet-coverage` 18.10.0 (MIT), which merges
+the two coverage reports into one. Neither ships in anything.
 
 ## License
 

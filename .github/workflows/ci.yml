@@ -51,7 +51,17 @@ jobs:
       # Both projects. Twenty-two of the integration tests need no launcher — among
       # them every untrusted-issuer refusal — and the eleven that do skip themselves.
       - name: Test
-        run: dotnet test --no-build
+        run: >
+          dotnet test --no-build
+          --coverage --coverage-settings coverage.config
+          --coverage-output-format cobertura
+
+      # Reported, not gated. This job runs offline, so the launcher-bound tests skip and
+      # the number is structurally below what the suite actually reaches — a floor set
+      # against it would enshrine a figure the tests beat by construction. The nightly
+      # job runs all of them, and that is where a floor can mean something.
+      - name: Report coverage
+        run: ./.github/coverage.sh
 
   integration:
     name: Integration tests against a live launcher
