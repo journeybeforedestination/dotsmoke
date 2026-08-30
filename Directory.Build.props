@@ -1,0 +1,47 @@
+<Project>
+  <!--
+    Settings every project here shares. The three .csproj files each carried an
+    identical copy of the first three; the analyzer settings below are the reason
+    this file exists, and there is nowhere sensible to repeat those three times.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    The in-box .NET analyzers, turned up. The level is pinned rather than left to
+    follow the SDK: AnalysisMode=Recommended means whatever the installed SDK
+    thinks Recommended means, so a newer SDK could introduce rules and fail a
+    build that nothing in this repository changed. Bumping 10.0 is deliberate.
+
+    Security runs at maximum because here it is free — it reports nothing — and
+    this app takes an issuer URL from a query parameter and then fetches it.
+  -->
+  <PropertyGroup>
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+    IDE0005, the unused-using rule, only reports during a build when the
+    documentation file is generated. Generating it also turns on CS1591 and
+    CS1573, which would want an XML comment on every public member of a demo.
+  -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    Lock files make a restore reproducible and give CI's locked-mode restore
+    something to check. They also make the NuGet audit deterministic: the resolved
+    graph is fixed, so a newly published advisory is the only thing that can
+    change the answer.
+  -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+</Project>

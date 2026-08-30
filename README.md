@@ -144,8 +144,8 @@ it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatemen
 
 ## Formatting
 
-[CSharpier][csharpier] owns the layout of every `.cs` and `.csproj` file here. It is
-pinned in `.config/dotnet-tools.json`, so a clone gets the same version:
+[CSharpier][csharpier] owns the layout of every `.cs`, `.csproj` and `.props` file
+here. It is pinned in `.config/dotnet-tools.json`, so a clone gets the same version:
 
 ```bash
 dotnet tool restore
@@ -154,11 +154,12 @@ dotnet csharpier check .    # verify, changing nothing
 ```
 
 `.editorconfig` covers what CSharpier does not: naming, `var`, pattern matching,
-expression-bodied members. Those are all suggestions — nothing fails a build over
-them — and they were written to describe the code that was already here rather than
-to impose a house style on it. The one rule turned off outright is `IDE0055`, the
-umbrella for every whitespace and new-line option, which contradicts CSharpier often
-enough that leaving both on would have the two tools undoing each other.
+expression-bodied members. Those are suggestions — with one exception noted under
+Analyzers, nothing fails a build over them — and they were written to describe the
+code that was already here rather than to impose a house style on it. The one rule
+turned off outright is `IDE0055`, the umbrella for every whitespace and new-line
+option, which contradicts CSharpier often enough that leaving both on would have the
+two tools undoing each other.
 
 Guard clauses stay brace-free (`csharp_prefer_braces = when_multiline`) and
 `.cshtml` is formatted by hand — CSharpier has no Razor support, and neither does
@@ -173,6 +174,56 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
 [csharpier]: https://csharpier.com/
+
+## Analyzers
+
+The .NET SDK ships Roslyn analyzers and runs a small subset of them by default.
+`Directory.Build.props` turns them up:
+
+```xml
+<AnalysisLevel>10.0-recommended</AnalysisLevel>
+<AnalysisModeSecurity>All</AnalysisModeSecurity>
+<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+```
+
+Warnings while you type; `dotnet build -warnaserror` turns them into errors for an
+unattended build. Nothing extra is installed to get this: no third-party analyzer
+package. The
+security category runs at maximum because on this code it reports nothing, which
+is worth having for free in an app that fetches a URL handed to it in a query
+parameter.
+
+`10.0-recommended` pins the rule set to the .NET 10 SDK's idea of *recommended*
+rather than to whichever SDK is installed, so a newer SDK cannot fail a build that
+nothing here changed. Bumping that number is a deliberate act, like the CSharpier
+version.
+
+The dependency audit comes along for free: NuGet checks the resolved graph against
+its advisory database on every restore, and `-warnaserror` promotes a hit to an
+error.
+
+```
+error NU1904: Package 'X' 1.2.3 has a known critical severity vulnerability
+```
+
+So a newly disclosed advisory can turn a build red with no commit behind it. That
+is the intent — this app handles OAuth credentials and patient data.
+
+Two rules are overridden in `.editorconfig`, each with its reason written beside
+it: `IDE0005` is raised to a warning, because an unused `using` is not a matter of
+taste; and `CA1707` is switched off under `tests/`, where method names are
+sentences rather than identifiers.
+
+## The pinned toolchain
+
+`global.json` pins the SDK to 10.0.400 and rolls forward to any later 10.0.x. A
+`packages.lock.json` beside each project pins the resolved dependency graph. Between
+them, a build here, on your machine, and in CI sees the same compiler, the same
+analyzers and the same packages.
+
+Adding or upgrading a package rewrites the lock file during `dotnet restore` —
+commit it with the change. CI restores with `--locked-mode`, which fails rather
+than quietly resolving something new.
 
 ## Design notes
 
@@ -217,7 +268,8 @@ else is in-box ASP.NET Core.
 
 The tests add `xunit.v3` and `Microsoft.AspNetCore.Mvc.Testing`, and nothing else
 — no mocking library, no container library. `global.json` opts `dotnet test` into
-Microsoft.Testing.Platform, which the .NET 10 SDK requires.
+Microsoft.Testing.Platform, which the .NET 10 SDK requires, and pins the SDK; see
+Analyzers.
 
 One dev-time tool, `CSharpier` 1.3.0 (MIT), is pinned in
 `.config/dotnet-tools.json`. It formats the source and ships in nothing.

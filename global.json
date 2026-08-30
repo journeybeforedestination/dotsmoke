@@ -1,4 +1,10 @@
 {
+  "sdk": {
+    "version": "10.0.400",
+    "rollForward": "latestFeature",
+    "allowPrerelease": false,
+    "errorMessage": "This repository pins the .NET SDK so that the analyzer gate and the lock files mean the same thing everywhere. Install 10.0.400 or a later 10.0.x."
+  },
   "test": {
     "runner": "Microsoft.Testing.Platform"
   }
