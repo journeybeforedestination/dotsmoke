@@ -164,6 +164,14 @@ Guard clauses stay brace-free (`csharp_prefer_braces = when_multiline`) and
 `.cshtml` is formatted by hand — CSharpier has no Razor support, and neither does
 `dotnet format`.
 
+The commit that first ran CSharpier over the whole tree is listed in
+`.git-blame-ignore-revs`, so blame lands on whoever wrote a line rather than on
+the reformat. GitHub applies that file by itself; locally it needs telling once:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 [csharpier]: https://csharpier.com/
 
 ## Design notes

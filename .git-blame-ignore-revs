@@ -1,0 +1,7 @@
+# Revisions to skip when running git blame. GitHub honours this file on its
+# own; locally it has to be pointed at once:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Apply CSharpier to the whole tree
+ed901587ed05bc9499ba040cf056e8bfa16552d9
