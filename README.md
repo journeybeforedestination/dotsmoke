@@ -187,8 +187,9 @@ by hand.
 
 ## Formatting
 
-[CSharpier][csharpier] owns the layout of every `.cs`, `.csproj` and `.props` file
-here. It is pinned in `.config/dotnet-tools.json`, so a clone gets the same version:
+[CSharpier][csharpier] owns the layout of every `.cs`, `.csproj`, `.props` and
+`.config` file here — the last of those being `coverage.config`, which it picked up
+by itself and reindented, so it may as well keep it. It is pinned in `.config/dotnet-tools.json`, so a clone gets the same version:
 
 ```bash
 dotnet tool restore
