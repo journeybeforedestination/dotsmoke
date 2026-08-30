@@ -101,7 +101,7 @@ public class LaunchTranscriptTests
         Assert.Equal("Bearer", Assert.Single(step.Fields, f => f.Label == "token_type").Value);
         Assert.Contains("3600", Assert.Single(step.Fields, f => f.Label == "expires_in").Value);
         Assert.Equal(
-            "launch patient/Patient.read",
+            "launch openid fhirUser patient/Patient.read",
             Assert.Single(step.Fields, f => f.Label == "scope").Value
         );
         Assert.Equal("pat-1", Assert.Single(step.Fields, f => f.Label == "patient").Value);
@@ -177,12 +177,118 @@ public class LaunchTranscriptTests
             ConfigurationJson
         );
 
-    private static CallbackOutcome.Completed Completed() =>
+    private static readonly IdTokenFacts Claims = new(
+        Iss,
+        "smart-on-fhir-demo",
+        "opaque-subject-that-is-long-enough-to-abbreviate",
+        "Practitioner/prac-1",
+        new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero),
+        new DateTimeOffset(2026, 8, 30, 13, 0, 0, TimeSpan.Zero)
+    );
+
+    private static CallbackOutcome.Completed Completed(
+        IdTokenFacts? identity = null,
+        string? identityUnavailable = null,
+        LaunchUser? user = null,
+        string? userUnavailable = null
+    ) =>
         new(
             new PatientSummary("Alex Rivera", "Female", null, null, null, null, null),
             """{"resourceType":"Patient","id":"pat-1"}""",
-            new TokenFacts("Bearer", 3600, "launch patient/Patient.read", "pat-1", null),
+            new TokenFacts(
+                "Bearer",
+                3600,
+                "launch openid fhirUser patient/Patient.read",
+                "pat-1",
+                null,
+                NeedPatientBanner: true,
+                SmartStyleUrl: "https://ehr.example/smart-style.json"
+            ),
             $$"""{"access_token":"{{Smart.Withheld}}","token_type":"Bearer","patient":"pat-1"}""",
-            $"{Iss}/Patient/pat-1"
+            $"{Iss}/Patient/pat-1",
+            identity,
+            identityUnavailable,
+            user,
+            userUnavailable
         );
+
+    private static CallbackOutcome.Completed Identified() =>
+        Completed(Claims, user: new LaunchUser("Practitioner", "Dr. Albertine Orn", "93370"));
+
+    // ---- Who launched it --------------------------------------------------
+
+    [Fact]
+    public void The_identity_step_withholds_the_raw_id_token()
+    {
+        var step = LaunchTranscript.WhoLaunchedThis(Identified());
+
+        Assert.Contains("withheld", step.PayloadLabel);
+        Assert.DoesNotContain(step.Fields, f => f.Label == "id_token" && f.Value != Smart.Withheld);
+    }
+
+    [Fact]
+    public void Every_claim_the_app_checked_is_named_with_what_it_was_checked_against()
+    {
+        var step = LaunchTranscript.WhoLaunchedThis(Identified());
+
+        foreach (var claim in new[] { "signature", "iss", "aud", "exp", "sub", "fhirUser" })
+            Assert.Contains(step.Fields, f => f.Label == claim && f.Note.Length > 0);
+    }
+
+    [Fact]
+    public void The_identity_step_says_why_validating_the_id_token_was_optional()
+    {
+        var step = LaunchTranscript.WhoLaunchedThis(Identified());
+
+        Assert.Contains("3.1.3.7", step.Fields.Single(f => f.Label == "signature").Note);
+    }
+
+    [Fact]
+    public void The_identity_step_admits_the_launcher_does_not_enforce_user_scopes()
+    {
+        var step = LaunchTranscript.WhoLaunchedThis(Identified());
+
+        // Naming the scope without this would imply an enforcement that is not there.
+        Assert.Contains(
+            "does not actually enforce",
+            step.Fields.Single(f => f.Label == "the user").Note
+        );
+    }
+
+    [Fact]
+    public void An_unproved_identity_names_nobody_and_says_why()
+    {
+        var step = LaunchTranscript.WhoLaunchedThis(
+            Completed(identityUnavailable: "The EHR did not grant the openid scope.")
+        );
+
+        Assert.Contains("Nobody", step.Explanation);
+        Assert.Contains("openid scope", step.Fields.Single(f => f.Label == "id_token").Note);
+    }
+
+    [Fact]
+    public void A_claim_that_could_not_be_followed_still_reports_the_reason()
+    {
+        var step = LaunchTranscript.WhoLaunchedThis(
+            Completed(Claims, userUnavailable: "The EHR would not return Practitioner/x (403).")
+        );
+
+        Assert.Contains("403", step.Fields.Single(f => f.Label == "the user").Note);
+    }
+
+    [Fact]
+    public void The_token_step_reports_the_context_fields_the_ehr_returned()
+    {
+        var step = LaunchTranscript.TheTokenResponse(Identified());
+
+        foreach (var field in new[] { "need_patient_banner", "smart_style_url" })
+            Assert.Contains(step.Fields, f => f.Label == field);
+    }
+
+    [Fact]
+    public void The_patient_read_is_the_seventh_step_now_that_identity_is_the_sixth()
+    {
+        Assert.StartsWith("6 · ", LaunchTranscript.WhoLaunchedThis(Identified()).Title);
+        Assert.StartsWith("7 · ", LaunchTranscript.ThePatientRead(Identified()).Title);
+    }
 }

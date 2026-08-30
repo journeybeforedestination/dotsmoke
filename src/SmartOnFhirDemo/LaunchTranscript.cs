@@ -243,16 +243,137 @@ public static class LaunchTranscript
                     token.Encounter ?? "—",
                     "The other context the EHR may pass. This app does not ask for it or use it."
                 ),
+                new StepField(
+                    "need_patient_banner",
+                    token.NeedPatientBanner?.ToString() ?? "—",
+                    "Whether the EHR is already showing a patient banner around this app. An "
+                        + "app embedded in an EHR frame is told not to draw a second one."
+                ),
+                new StepField(
+                    "smart_style_url",
+                    token.SmartStyleUrl ?? "—",
+                    "A stylesheet of the EHR's colours and fonts, so an embedded app can look "
+                        + "like part of it. This app ignores both of these, and shows them "
+                        + "because the step claims to report what the endpoint returned."
+                ),
             ],
             "The token response, with credentials removed",
             Pretty(completed.TokenJson)
         );
     }
 
+    /// <summary>
+    /// Who was driving, and how much of that the app is willing to believe. This is the
+    /// step the whole openid/fhirUser exchange exists for, and the one place the app
+    /// explains that validating the id_token was optional and it did so anyway.
+    /// </summary>
+    public static LaunchStep WhoLaunchedThis(CallbackOutcome.Completed completed) =>
+        completed.Identity is not { } claims
+            ? new LaunchStep(
+                "6 · Who launched this app",
+                "Nobody, as far as this launch can prove. A SMART app learns who is driving "
+                    + "it from an id_token, and this one has none it can trust — so it names "
+                    + "no user rather than showing a claim it did not check.",
+                [
+                    new StepField(
+                        "id_token",
+                        Smart.Withheld,
+                        completed.IdentityUnavailable
+                            ?? "The EHR returned no id_token for this launch."
+                    ),
+                ]
+            )
+            : new LaunchStep(
+                "6 · Who launched this app",
+                "The token response carried an id_token as well as an access token. The two "
+                    + "answer different questions: the access token says what may be read, and "
+                    + "this says who is reading. It is a signed JWT, and every claim below was "
+                    + "checked before any of it was believed.",
+                [
+                    new StepField(
+                        "signature",
+                        "verified",
+                        "Checked against the keys the EHR publishes at its jwks_uri, which "
+                            + "discovery named back in step 2. Worth knowing that this was "
+                            + "optional: OIDC Core 3.1.3.7 lets an app skip it when the token "
+                            + "arrives over a direct TLS call to the token endpoint, which is "
+                            + "exactly how this one arrived. The keys are one cached fetch away, "
+                            + "and an app that only checks a signature when it must is one "
+                            + "deployment change away from not checking when it should."
+                    ),
+                    new StepField(
+                        "iss",
+                        claims.Issuer,
+                        "Matched against the issuer discovery published — not against the iss "
+                            + "query parameter the launch arrived with. Conflating the two would "
+                            + "let whoever chose that parameter also vouch for the answer."
+                    ),
+                    new StepField(
+                        "aud",
+                        claims.Audience,
+                        "This app's client_id. A token minted for a different app is refused "
+                            + "here, which is what stops one being replayed into this one."
+                    ),
+                    new StepField(
+                        "exp",
+                        $"{claims.ExpiresAt:u}",
+                        "Checked against the clock. Everything above is only true at a moment."
+                    ),
+                    new StepField(
+                        "sub",
+                        Abbreviate(claims.Subject),
+                        "The user's stable, opaque identifier at this EHR. Usable as a key, and "
+                            + "deliberately not usable as a name."
+                    ),
+                    new StepField(
+                        "fhirUser",
+                        claims.FhirUser ?? "—",
+                        "A reference to the user as a FHIR resource — the claim that turns an "
+                            + "identity into something readable. SMART says it SHOULD be an "
+                            + "absolute URL; this EHR returns a relative one, so the app resolves "
+                            + "it against the launch's own FHIR server. An absolute reference to "
+                            + "any other origin is refused rather than followed, because reading "
+                            + "it would send this access token somewhere it does not belong."
+                    ),
+                    WhoTheyAre(completed),
+                ],
+                "The id_token's claims, decoded — the token itself is withheld",
+                string.Join(
+                    "\n",
+                    [
+                        $"iss      = {claims.Issuer}",
+                        $"aud      = {claims.Audience}",
+                        $"sub      = {claims.Subject}",
+                        $"fhirUser = {claims.FhirUser ?? "(absent)"}",
+                        $"iat      = {claims.IssuedAt:u}",
+                        $"exp      = {claims.ExpiresAt:u}",
+                    ]
+                )
+            );
+
+    /// <summary>The result of following the fhirUser reference, whichever way it went.</summary>
+    private static StepField WhoTheyAre(CallbackOutcome.Completed completed) =>
+        completed.User is { } user
+            ? new StepField(
+                "the user",
+                user.Name ?? $"an unnamed {user.ResourceType}",
+                $"Read back as a {user.ResourceType} with the same access token as the "
+                    + "patient, which is what the user/Practitioner.read scope was asked for in "
+                    + "step 3. Be aware that this launcher does not actually enforce user/ "
+                    + "scopes — the read would have succeeded without asking. A production EHR "
+                    + "is entitled to refuse it, and this app carries on without a name when it does."
+            )
+            : new StepField(
+                "the user",
+                "—",
+                completed.UserUnavailable
+                    ?? "The id_token named nobody, so there was nothing to read."
+            );
+
     /// <summary>The one request all of the preceding was arranged to permit.</summary>
     public static LaunchStep ThePatientRead(CallbackOutcome.Completed completed) =>
         new(
-            "6 · Reading the patient",
+            "7 · Reading the patient",
             "Everything up to here was arranged so that this one request could be made. It is an "
                 + "ordinary FHIR read, and the access token is the only thing about it that is unusual.",
             [

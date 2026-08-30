@@ -32,7 +32,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// <summary>Runs a whole launch — discovery, authorize, token, patient read — as one GET.</summary>
     private async Task<string> LaunchAsync(string authError = "")
     {
-        var launch = LaunchParams.Encode(launcher.PatientId, authError);
+        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId, authError);
         var url =
             $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
@@ -69,6 +69,18 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         // read one and projected it is.
         Assert.NotEqual(Absent, FieldValue(html, "Name"));
         Assert.NotEqual(Absent, FieldValue(html, "Gender"));
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task An_ehr_launch_names_the_practitioner_who_started_it()
+    {
+        var html = await LaunchAsync();
+
+        // Which practitioner the sandbox serves is not the point; that the id_token was
+        // validated, its fhirUser followed, and a real name read back is.
+        Assert.Contains("Launched by", html);
+        Assert.DoesNotContain("no id_token", html);
+        Assert.DoesNotContain("could not be validated", html);
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
@@ -113,7 +125,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// </summary>
     private async Task<(string Opening, string Pause)> LearnAsync()
     {
-        var launch = LaunchParams.Encode(launcher.PatientId);
+        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
         var url =
             $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
@@ -171,7 +183,93 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.Contains("(withheld)", pause);
     }
 
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_narrated_launch_explains_who_started_it()
+    {
+        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
+
+        using var client = launcher.CreateChainClient();
+
+        using var opening = await client.GetAsync(
+            $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
+                + $"&launch={Uri.EscapeDataString(launch)}",
+            TestContext.Current.CancellationToken
+        );
+        var authorize = WebUtility.HtmlDecode(
+            Regex
+                .Match(
+                    await opening.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+                    "class=\"button\" href=\"(?<url>[^\"]+)\""
+                )
+                .Groups["url"]
+                .Value
+        );
+
+        using var pause = await client.GetAsync(authorize, TestContext.Current.CancellationToken);
+        var pauseHtml = await pause.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken
+        );
+        var state = Hidden(pauseHtml, "State");
+
+        // The exchange is a Razor Pages POST, so it is antiforgery-protected: the token in
+        // the form only counts alongside the cookie that came with the page carrying it.
+        using var exchange = new HttpRequestMessage(HttpMethod.Post, "/learn/callback")
+        {
+            Content = new FormUrlEncodedContent(
+                new Dictionary<string, string>
+                {
+                    ["Code"] = Hidden(pauseHtml, "Code"),
+                    ["State"] = state,
+                    ["__RequestVerificationToken"] = Hidden(
+                        pauseHtml,
+                        "__RequestVerificationToken"
+                    ),
+                }
+            ),
+        };
+        exchange.Headers.Add("Cookie", AntiforgeryCookie(pause));
+
+        using var exchanged = await client.SendAsync(
+            exchange,
+            TestContext.Current.CancellationToken
+        );
+        Assert.True(
+            exchanged.IsSuccessStatusCode,
+            $"The exchange ended at {(int)exchanged.StatusCode}."
+        );
+
+        using var identity = await client.GetAsync(
+            $"/learn/user?state={Uri.EscapeDataString(state)}",
+            TestContext.Current.CancellationToken
+        );
+        var html = await identity.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("Who launched this app", html);
+
+        // The claim was followed to a real resource, not merely reported.
+        Assert.DoesNotContain("Nobody, as far as this launch can prove", html);
+        Assert.Contains("Practitioner", html);
+
+        // And the step makes the point the whole exchange exists to make.
+        Assert.Contains("3.1.3.7", html);
+    }
+
     // ---- Helpers ----------------------------------------------------------
+
+    private static string AntiforgeryCookie(HttpResponseMessage response) =>
+        string.Join(
+            "; ",
+            response.Headers.GetValues("Set-Cookie").Select(cookie => cookie.Split(';')[0])
+        );
+
+    /// <summary>Reads a hidden form input the narrated pause carries forward.</summary>
+    private static string Hidden(string html, string name)
+    {
+        var match = Regex.Match(html, $"name=\"{name}\"[^>]*value=\"(?<value>[^\"]+)\"");
+
+        Assert.True(match.Success, $"The pause carried no '{name}' to post back.");
+        return WebUtility.HtmlDecode(match.Groups["value"].Value);
+    }
 
     private static string FieldValue(string html, string label)
     {

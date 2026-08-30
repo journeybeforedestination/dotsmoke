@@ -48,10 +48,20 @@ jobs:
       - name: Build
         run: dotnet build --no-restore -warnaserror
 
-      # Both projects. Twenty-one of the integration tests need no launcher — among
-      # them every untrusted-issuer refusal — and the nine that do skip themselves.
+      # Both projects. Twenty-two of the integration tests need no launcher — among
+      # them every untrusted-issuer refusal — and the eleven that do skip themselves.
       - name: Test
-        run: dotnet test --no-build
+        run: >
+          dotnet test --no-build
+          --coverage --coverage-settings coverage.config
+          --coverage-output-format cobertura
+
+      # Reported, not gated. This job runs offline, so the launcher-bound tests skip and
+      # the number is structurally below what the suite actually reaches — a floor set
+      # against it would enshrine a figure the tests beat by construction. The nightly
+      # job runs all of them, and that is where a floor can mean something.
+      - name: Report coverage
+        run: ./.github/coverage.sh
 
   integration:
     name: Integration tests against a live launcher
@@ -92,6 +102,9 @@ jobs:
           docker logs smart-launcher || true
           exit 1
 
+      - name: Restore the pinned tools
+        run: dotnet tool restore
+
       - name: Restore
         run: dotnet restore --locked-mode
 
@@ -99,4 +112,16 @@ jobs:
         run: dotnet build --no-restore -warnaserror
 
       - name: Test
-        run: dotnet test --no-build
+        run: >
+          dotnet test --no-build
+          --coverage --coverage-settings coverage.config
+          --coverage-output-format cobertura
+
+      # This job runs the whole suite, so unlike the pull-request one its number means
+      # something and can be held to. The floor is under the measured rate rather than
+      # at it: this job reaches a public sandbox that can be reseeded, and a patient
+      # arriving without a phone number should not read as a regression.
+      #
+      # Measured 95.0% on 2026-08-30. Raise this when it has comfortably moved up.
+      - name: Report coverage
+        run: ./.github/coverage.sh 93

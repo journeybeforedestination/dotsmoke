@@ -6,6 +6,10 @@ builder.Services.AddRazorPages();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<SmartLaunch>();
+builder.Services.AddScoped<Jwks>();
+
+// The seam the id_token's lifetime is checked against, so a test can hold the clock still.
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.Configure<SmartOptions>(builder.Configuration.GetSection("Smart"));
 
 var app = builder.Build();

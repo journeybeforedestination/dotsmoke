@@ -15,16 +15,21 @@ internal static class LaunchParams
     private const int PublicClient = 0;
     private const int PkceAlwaysRequired = 2;
 
+    /// <param name="providerId">
+    /// Who the launch is by. Not optional in practice: the app asks for <c>openid</c>, so
+    /// the launcher has to put a user in the id_token, and with no provider selected it
+    /// stops at its login page rather than honouring skip_login below.
+    /// </param>
     /// <param name="authError">
     /// A launcher error simulation, e.g. "auth_invalid_scope". Empty for a clean launch.
     /// </param>
-    public static string Encode(string patientId, string authError = "")
+    public static string Encode(string patientId, string providerId, string authError = "")
     {
         object[] fields =
         [
             ProviderEhrLaunch,
             patientId,
-            "", // provider
+            providerId,
             "AUTO", // encounter
             1, // skip_login  — no login screen, so no browser needed
             1, // skip_auth   — no consent screen either

@@ -14,6 +14,9 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : PageModel
     public PatientSummary Summary { get; private set; } = default!;
     public string RawJson { get; private set; } = "";
 
+    /// <summary>Who started this launch, or why the app cannot say.</summary>
+    public string WhoLaunchedIt { get; private set; } = "";
+
     public async Task<IActionResult> OnGetAsync(
         string? code,
         string? state,
@@ -40,6 +43,7 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : PageModel
     {
         Summary = completed.Summary;
         RawJson = completed.RawJson;
+        WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(completed);
         return Page();
     }
 

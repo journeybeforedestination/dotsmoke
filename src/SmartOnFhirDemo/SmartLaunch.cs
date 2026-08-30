@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Hl7.Fhir.Model;
@@ -49,12 +50,28 @@ public abstract record CallbackOutcome
     /// apart from them — the access token itself is not on this record at all, so no
     /// caller can render or store it.
     /// </summary>
+    /// <param name="Identity">
+    /// What the id_token claimed, once validated, or null when there was none to validate
+    /// or it did not survive validation. Identity is supplementary here: the app's job is
+    /// the patient summary, and none of the ways it can be missing stop the launch.
+    /// </param>
+    /// <param name="IdentityUnavailable">Why <paramref name="Identity"/> is null, as a sentence.</param>
+    /// <param name="User">
+    /// The resource <c>fhirUser</c> named, read back from the EHR. Null whenever the claim
+    /// was absent, could not be followed, or the server would not return it — the claim in
+    /// <paramref name="Identity"/> can be perfectly good while this is not.
+    /// </param>
+    /// <param name="UserUnavailable">Why <paramref name="User"/> is null, as a sentence.</param>
     public sealed record Completed(
         PatientSummary Summary,
         string RawJson,
         TokenFacts Token,
         string TokenJson,
-        string PatientUrl
+        string PatientUrl,
+        IdTokenFacts? Identity = null,
+        string? IdentityUnavailable = null,
+        LaunchUser? User = null,
+        string? UserUnavailable = null
     ) : CallbackOutcome;
 
     public sealed record MissingParameters : CallbackOutcome;
@@ -87,6 +104,8 @@ public abstract record CallbackOutcome
 public sealed partial class SmartLaunch(
     IHttpClientFactory clients,
     IOptions<SmartOptions> options,
+    Jwks jwks,
+    TimeProvider clock,
     ILogger<SmartLaunch> log
 )
 {
@@ -103,6 +122,12 @@ public sealed partial class SmartLaunch(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading Patient/{patientId} failed")]
     private partial void LogPatientReadFailed(Exception ex, string? patientId);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Reading the launching user {reference} failed"
+    )]
+    private partial void LogUserReadFailed(Exception ex, string reference);
 
     /// <summary>Discover the EHR's OAuth endpoints and build the authorization request.</summary>
     public async Task<LaunchOutcome> BeginAsync(
@@ -155,7 +180,14 @@ public sealed partial class SmartLaunch(
         return new LaunchOutcome.Prepared(
             Smart.BuildAuthorizeUrl(config, Options, redirectUri, iss, launch, state, challenge),
             state,
-            new LaunchState(iss, config.TokenEndpoint, verifier, redirectUri),
+            new LaunchState(
+                iss,
+                config.TokenEndpoint,
+                verifier,
+                redirectUri,
+                config.Issuer,
+                config.JwksUri
+            ),
             wellKnown,
             configJson
         );
@@ -221,13 +253,64 @@ public sealed partial class SmartLaunch(
         // Everything downstream sees the redacted copy.
         var tokenJson = Smart.Redact(body, "access_token", "refresh_token", "id_token");
 
-        return await ReadPatientAsync(launch.Iss, token, tokenJson, ct);
+        var identity = await IdentifyAsync(launch, token, ct);
+
+        return await ReadPatientAsync(launch.Iss, token, tokenJson, identity, ct);
+    }
+
+    /// <summary>
+    /// Who started this launch, if the EHR said and the claim can be trusted. Every way
+    /// this can fail returns a sentence rather than throwing: the patient summary does
+    /// not depend on it, and a launch that works should not be lost to an absent name.
+    /// </summary>
+    private async Task<(IdTokenFacts? Facts, string? Unavailable)> IdentifyAsync(
+        LaunchState launch,
+        TokenResponse token,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrEmpty(token.IdToken))
+            return (
+                null,
+                "The token response carried no id_token, so the EHR did not grant the "
+                    + "openid scope this app asked for."
+            );
+
+        if (string.IsNullOrEmpty(launch.Issuer) || string.IsNullOrEmpty(launch.JwksUri))
+            return (
+                null,
+                "The EHR's SMART configuration publishes no issuer and jwks_uri, so there is "
+                    + "nothing to validate the id_token against. Unvalidated claims are not shown."
+            );
+
+        if (await jwks.KeysAsync(launch.JwksUri, ct) is not { Count: > 0 } keys)
+            return (
+                null,
+                $"The signing keys at {launch.JwksUri} could not be read, so the id_token "
+                    + "could not be validated."
+            );
+
+        var outcome = await IdToken.ValidateAsync(
+            token.IdToken,
+            keys,
+            launch.Issuer,
+            Options.ClientId,
+            clock
+        );
+
+        return outcome switch
+        {
+            IdTokenOutcome.Valid(var facts) => (facts, null),
+            IdTokenOutcome.Invalid(var reason) => (null, $"The id_token was refused: {reason}."),
+            _ => throw new UnreachableException($"{outcome.GetType().Name} is not an outcome."),
+        };
     }
 
     private async Task<CallbackOutcome> ReadPatientAsync(
         string iss,
         TokenResponse token,
         string tokenJson,
+        (IdTokenFacts? Facts, string? Unavailable) identity,
         CancellationToken ct
     )
     {
@@ -253,15 +336,22 @@ public sealed partial class SmartLaunch(
         {
             var patient = await fhir.ReadAsync<Patient>($"Patient/{token.Patient}", ct: ct);
 
-            return patient is null
-                ? new CallbackOutcome.PatientNotFound(iss, token.Patient!)
-                : new CallbackOutcome.Completed(
-                    PatientSummary.From(patient),
-                    patient.ToJson(pretty: true),
-                    TokenFacts.From(token),
-                    tokenJson,
-                    patientUrl
-                );
+            if (patient is null)
+                return new CallbackOutcome.PatientNotFound(iss, token.Patient!);
+
+            var user = await ReadUserAsync(fhir, iss, identity.Facts?.FhirUser, ct);
+
+            return new CallbackOutcome.Completed(
+                PatientSummary.From(patient),
+                patient.ToJson(pretty: true),
+                TokenFacts.From(token),
+                tokenJson,
+                patientUrl,
+                identity.Facts,
+                identity.Unavailable,
+                user.User,
+                user.Unavailable
+            );
         }
         catch (FhirOperationException ex)
         {
@@ -277,6 +367,58 @@ public sealed partial class SmartLaunch(
             return new CallbackOutcome.IncompatibleFhirVersion(iss, ex.Message);
         }
     }
+
+    /// <summary>
+    /// Reads whoever <c>fhirUser</c> named, on the same authenticated client the patient
+    /// was read with. Every failure is a sentence, not an exception: a launch that read its
+    /// patient has done its job whether or not it can also put a name to the clinician.
+    /// </summary>
+    private async Task<(LaunchUser? User, string? Unavailable)> ReadUserAsync(
+        FhirClient fhir,
+        string iss,
+        string? fhirUser,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrEmpty(fhirUser))
+            return (null, null);
+
+        if (Location(iss, fhirUser) is not { } location)
+            return (
+                null,
+                "The id_token points at a FHIR server other than the one this launch is "
+                    + "for, so it was not followed — the access token belongs to this server alone."
+            );
+
+        try
+        {
+            var resource = await fhir.ReadAsync<Resource>(location, ct: ct);
+
+            return resource is null
+                ? (null, $"The EHR returned nothing for {fhirUser}.")
+                : (LaunchUser.From(resource), null);
+        }
+        catch (FhirOperationException ex)
+        {
+            // Commonly a 403: asking for user/Practitioner.read does not oblige an EHR
+            // to grant it, and an app is expected to cope with getting less than it asked.
+            LogUserReadFailed(ex, fhirUser);
+            return (null, $"The EHR would not return {fhirUser} ({(int)ex.Status}).");
+        }
+    }
+
+    /// <summary>
+    /// Where to read the launching user from, or null if the reference must not be followed.
+    ///
+    /// SMART says fhirUser SHOULD be an absolute URL; the SMART App Launcher returns a
+    /// relative one, so both are handled. An absolute reference to a different origin is
+    /// refused rather than followed, because following it would send this server's access
+    /// token to a server the token was never issued for.
+    /// </summary>
+    private static string? Location(string iss, string fhirUser) =>
+        !Uri.IsWellFormedUriString(fhirUser, UriKind.Absolute) ? fhirUser
+        : Smart.SameOrigin(iss, fhirUser) ? fhirUser
+        : null;
 
     private static string? Describe(OperationOutcome? outcome) =>
         outcome?.Issue is { Count: > 0 } issues

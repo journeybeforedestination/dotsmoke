@@ -33,6 +33,21 @@ public static class LaunchMessages
         "This walkthrough has expired. It is kept for five minutes after the launch completes, "
         + "and then discarded along with everything it was showing. Start a new launch from the EHR.";
 
+    /// <summary>
+    /// The one line the summary pages carry about who is driving the launch. A name when
+    /// the app could establish one, and otherwise the reason it could not — never silence,
+    /// because "no name shown" and "nobody was named" are worth telling apart.
+    /// </summary>
+    public static string WhoLaunchedIt(CallbackOutcome.Completed completed) =>
+        completed switch
+        {
+            { User: { Name: { } name, ResourceType: var type } } => $"Launched by {name} ({type}).",
+            { User: { ResourceType: var type } } => $"Launched by an unnamed {type}.",
+            { UserUnavailable: { } why } => why,
+            { IdentityUnavailable: { } why } => why,
+            _ => "The EHR named nobody in the id_token it returned.",
+        };
+
     public static string AuthorizationDenied(string reason) =>
         $"The EHR refused the authorization request: {reason}";
 
