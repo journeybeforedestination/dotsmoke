@@ -134,10 +134,37 @@ offline, gating pull requests — and the integration tests nightly and on deman
 where a red run is real signal about either the code or the sandbox rather than noise
 on someone's branch.
 
+The cheapest gate to add is not a test at all: `dotnet csharpier check .` needs no
+network, no container and no sandbox, and fails in under a second.
+
 To go hermetic, point the launcher at your own FHIR server with `FHIR_SERVER_R4`;
 that touches the fixture only, not the tests. Either run `hapiproject/hapi` and seed
 it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatement` —
 `VerifyFhirVersion` means the app fetches that first — along with `/Patient/{id}`.
+
+## Formatting
+
+[CSharpier][csharpier] owns the layout of every `.cs` and `.csproj` file here. It is
+pinned in `.config/dotnet-tools.json`, so a clone gets the same version:
+
+```bash
+dotnet tool restore
+dotnet csharpier format .   # apply
+dotnet csharpier check .    # verify, changing nothing
+```
+
+`.editorconfig` covers what CSharpier does not: naming, `var`, pattern matching,
+expression-bodied members. Those are all suggestions — nothing fails a build over
+them — and they were written to describe the code that was already here rather than
+to impose a house style on it. The one rule turned off outright is `IDE0055`, the
+umbrella for every whitespace and new-line option, which contradicts CSharpier often
+enough that leaving both on would have the two tools undoing each other.
+
+Guard clauses stay brace-free (`csharp_prefer_braces = when_multiline`) and
+`.cshtml` is formatted by hand — CSharpier has no Razor support, and neither does
+`dotnet format`.
+
+[csharpier]: https://csharpier.com/
 
 ## Design notes
 
@@ -183,6 +210,9 @@ else is in-box ASP.NET Core.
 The tests add `xunit.v3` and `Microsoft.AspNetCore.Mvc.Testing`, and nothing else
 — no mocking library, no container library. `global.json` opts `dotnet test` into
 Microsoft.Testing.Platform, which the .NET 10 SDK requires.
+
+One dev-time tool, `CSharpier` 1.3.0 (MIT), is pinned in
+`.config/dotnet-tools.json`. It formats the source and ships in nothing.
 
 ## License
 
