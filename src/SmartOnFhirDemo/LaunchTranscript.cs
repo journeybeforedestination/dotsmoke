@@ -281,7 +281,7 @@ public static class LaunchTranscript
     // ---- Helpers ----------------------------------------------------------
 
     private static StepField Param(
-        IReadOnlyDictionary<string, string> query,
+        Dictionary<string, string> query,
         string name,
         string note = "",
         bool abbreviate = false
@@ -303,7 +303,7 @@ public static class LaunchTranscript
         }
     }
 
-    private static IReadOnlyDictionary<string, string> Query(string url) =>
+    private static Dictionary<string, string> Query(string url) =>
         QueryHelpers
             .ParseQuery(new Uri(url).Query)
             .ToDictionary(p => p.Key, p => p.Value.ToString());
@@ -318,15 +318,18 @@ public static class LaunchTranscript
             ? value ?? "—"
             : $"{value[..8]}…{value[^4..]}  ({value.Length} characters)";
 
+    /// <summary>
+    /// Held once rather than built per call: JsonSerializerOptions caches the converters
+    /// it resolves on first use, and a fresh instance each time throws that cache away.
+    /// </summary>
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
     private static string Pretty(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
-            return JsonSerializer.Serialize(
-                document.RootElement,
-                new JsonSerializerOptions { WriteIndented = true }
-            );
+            return JsonSerializer.Serialize(document.RootElement, Indented);
         }
         catch (JsonException)
         {

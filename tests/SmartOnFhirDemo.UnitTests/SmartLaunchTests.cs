@@ -435,7 +435,7 @@ public class SmartLaunchTests
             observe?.Invoke(request);
 
             var path = request.RequestUri!.AbsolutePath;
-            return path.EndsWith("/metadata") ? Fhir(CapabilityStatement)
+            return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
                 : path.Contains("/Patient/") ? Fhir(PatientJson)
                 : Json(tokenJson);
         });

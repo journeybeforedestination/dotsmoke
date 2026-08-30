@@ -84,13 +84,25 @@ public abstract record CallbackOutcome
 /// ASP.NET — callers decide how to present each outcome, and where to keep the launch
 /// in flight between the two steps.
 /// </summary>
-public sealed class SmartLaunch(
+public sealed partial class SmartLaunch(
     IHttpClientFactory clients,
     IOptions<SmartOptions> options,
     ILogger<SmartLaunch> log
 )
 {
     private SmartOptions Options => options.Value;
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Refused a launch from untrusted issuer {iss}"
+    )]
+    private partial void LogUntrustedIssuer(string iss);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "SMART discovery failed for {wellKnown}")]
+    private partial void LogDiscoveryFailed(Exception ex, string wellKnown);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reading Patient/{patientId} failed")]
+    private partial void LogPatientReadFailed(Exception ex, string? patientId);
 
     /// <summary>Discover the EHR's OAuth endpoints and build the authorization request.</summary>
     public async Task<LaunchOutcome> BeginAsync(
@@ -106,7 +118,7 @@ public sealed class SmartLaunch(
         // Before the issuer is contacted at all, not after.
         if (!Smart.IsTrustedIssuer(iss, Options.TrustedIssuers))
         {
-            log.LogWarning("Refused a launch from untrusted issuer {Iss}", iss);
+            LogUntrustedIssuer(iss);
             return new LaunchOutcome.UntrustedIssuer(iss);
         }
 
@@ -127,7 +139,7 @@ public sealed class SmartLaunch(
         catch (Exception ex)
             when (ex is HttpRequestException or JsonException or NotSupportedException)
         {
-            log.LogWarning(ex, "SMART discovery failed for {WellKnown}", wellKnown);
+            LogDiscoveryFailed(ex, wellKnown);
             return new LaunchOutcome.DiscoveryFailed(wellKnown, ex.Message);
         }
 
@@ -253,7 +265,7 @@ public sealed class SmartLaunch(
         }
         catch (FhirOperationException ex)
         {
-            log.LogWarning(ex, "Reading Patient/{PatientId} failed", token.Patient);
+            LogPatientReadFailed(ex, token.Patient);
             return new CallbackOutcome.PatientReadFailed(
                 (int)ex.Status,
                 Describe(ex.Outcome) ?? ex.Message

@@ -34,7 +34,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     {
         var launch = LaunchParams.Encode(launcher.PatientId, authError);
         var url =
-            $"/launch?iss={Uri.EscapeDataString(launcher.Iss(launch))}"
+            $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
 
         using var client = launcher.CreateChainClient();
@@ -115,7 +115,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     {
         var launch = LaunchParams.Encode(launcher.PatientId);
         var url =
-            $"/learn?iss={Uri.EscapeDataString(launcher.Iss(launch))}"
+            $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
 
         using var client = launcher.CreateChainClient();

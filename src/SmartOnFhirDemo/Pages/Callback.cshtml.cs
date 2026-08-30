@@ -36,12 +36,12 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : PageModel
             : Fail(LaunchMessages.For(outcome));
     }
 
-    private IActionResult Render(CallbackOutcome.Completed completed)
+    private PageResult Render(CallbackOutcome.Completed completed)
     {
         Summary = completed.Summary;
         RawJson = completed.RawJson;
         return Page();
     }
 
-    private IActionResult Fail(string message) => RedirectToPage("/Error", new { message });
+    private RedirectToPageResult Fail(string message) => RedirectToPage("/Error", new { message });
 }

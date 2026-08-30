@@ -137,7 +137,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         // Not followed: the header goes on whatever the learn route itself answers, and
         // asserting it on all four proves the filter is wired to all four.
         using var client = app.CreateDirectClient();
-        using var response = await client.GetAsync(url);
+        using var response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         // These pages carry a live authorization code, patient demographics and a whole
         // FHIR resource. Nothing between here and the reader may keep a copy.

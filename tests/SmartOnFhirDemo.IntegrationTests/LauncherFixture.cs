@@ -17,9 +17,6 @@ public sealed class LauncherFixture : AppFixture, IAsyncLifetime
         _patientId
         ?? throw new InvalidOperationException($"No launcher at ${Launcher.UrlVariable}.");
 
-    /// <summary>The FHIR base URL for a launch — the launcher encodes its settings into the path.</summary>
-    public string Iss(string launch) => $"{Launcher.Url}/v/r4/sim/{launch}/fhir";
-
     public async ValueTask InitializeAsync()
     {
         if (Launcher.Url is null)

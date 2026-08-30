@@ -17,4 +17,7 @@ internal static class Launcher
             : null;
 
     public static bool IsRunning => Url is not null;
+
+    /// <summary>The FHIR base URL for a launch — the launcher encodes its settings into the path.</summary>
+    public static string Iss(string launch) => $"{Url}/v/r4/sim/{launch}/fhir";
 }

@@ -99,7 +99,7 @@ public class SmartTests
             "id_token"
         );
 
-        Assert.Equal(3, Regex.Matches(redacted, Regex.Escape(Smart.Withheld)).Count);
+        Assert.Equal(3, Regex.Count(redacted, Regex.Escape(Smart.Withheld)));
         Assert.Contains("launch", redacted);
     }
 
