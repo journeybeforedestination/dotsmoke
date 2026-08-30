@@ -110,6 +110,14 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     }
 
     [Fact]
+    public async Task A_narrated_identity_step_for_an_unknown_launch_is_refused()
+    {
+        var html = await app.GetAsync("/learn/user?state=never-issued");
+
+        Assert.Contains("walkthrough has expired", html);
+    }
+
+    [Fact]
     public async Task A_narrated_callback_for_an_unknown_launch_is_refused()
     {
         var html = await app.GetAsync("/learn/callback?code=whatever&state=never-issued");

@@ -74,6 +74,12 @@ public sealed record TokenResponse(
 
     [JsonPropertyName("encounter")]
     public string? Encounter { get; init; }
+
+    [JsonPropertyName("need_patient_banner")]
+    public bool? NeedPatientBanner { get; init; }
+
+    [JsonPropertyName("smart_style_url")]
+    public string? SmartStyleUrl { get; init; }
 }
 
 /// <summary>
@@ -86,11 +92,21 @@ public sealed record TokenFacts(
     int? ExpiresIn,
     string? Scope,
     string? Patient,
-    string? Encounter
+    string? Encounter,
+    bool? NeedPatientBanner,
+    string? SmartStyleUrl
 )
 {
     public static TokenFacts From(TokenResponse token) =>
-        new(token.TokenType, token.ExpiresIn, token.Scope, token.Patient, token.Encounter);
+        new(
+            token.TokenType,
+            token.ExpiresIn,
+            token.Scope,
+            token.Patient,
+            token.Encounter,
+            token.NeedPatientBanner,
+            token.SmartStyleUrl
+        );
 }
 
 public static class Smart

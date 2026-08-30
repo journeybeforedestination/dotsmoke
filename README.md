@@ -2,7 +2,8 @@
 
 A minimal SMART on FHIR app that handles a standard EHR launch end to end, then
 renders a short summary of the patient in context — and, on a second launch URL,
-walks you through the same launch a step at a time while it happens.
+walks you through the same launch a step at a time while it happens — including who
+started it, and how much of that the app is willing to believe.
 
 Built as a proof of concept against the public
 [SMART App Launcher](https://launch.smarthealthit.org/), on .NET 10, ASP.NET Core
@@ -36,20 +37,23 @@ SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
   launcher (provider login → patient/consent) ──302──▶ app /learn/callback?code=…&state=…
   app                                          ──▶ ④ the code, still unspent    [exchange]
   app ──POST {token}──▶ token used once, discarded, transcript kept
-  app ──GET {iss}/Patient/{id}  Bearer──▶ Patient
+  app  validate id_token; ──GET {iss}/Patient/{id} and {iss}/{fhirUser}  Bearer
   app  ──302──▶ /learn/token   ──▶ ⑤ what the token endpoint returned           [continue]
-               /learn/patient  ──▶ ⑥ the FHIR read, and the summary
+               /learn/user    ──▶ ⑥ who launched it, and how that was proved   [continue]
+               /learn/patient ──▶ ⑦ the FHIR read, and the summary
 ```
 
-Three of those are real pauses in a real launch, not a replay. Steps ⑤ and ⑥ read back a
-transcript of the exchange that the token was already removed from, which is what lets
-them be ordinary linkable pages without the launch holding a credential open.
+Two of those stops happen inside a live launch rather than a replay: the first, which
+holds the browser before the redirect, and step ④, which holds an authorization code that
+has not been spent. Steps ⑤ to ⑦ read back a transcript of the exchange that the token was
+already removed from, which is what lets them be ordinary linkable pages without the
+launch holding a credential open.
 
 What the pages never show: the PKCE verifier, the access token, and — when the issuer is
 refused — the issuer. What they do show, because you learn nothing otherwise: the granted
 scope, the resolved patient context, the full SMART configuration the EHR published, the
-token response with its credentials replaced, and enough of the authorization code to
-recognise it. The code is live and unspent at step ④, which is exactly the point being
+token response with its credentials replaced, the id_token's claims with the token itself
+withheld, and enough of the authorization code to recognise it. The code is live and unspent at step ④, which is exactly the point being
 made there: without the verifier, which never leaves the server, it cannot be redeemed.
 
 Pausing at step ④ works because the SMART App Launcher issues codes that live five
@@ -132,9 +136,9 @@ dotnet build --no-restore -warnaserror
 dotnet test --no-build
 ```
 
-That last line runs both projects, not only the fast one. Twenty-one of the
-thirty-one integration tests need no launcher — among them every untrusted-issuer
-refusal, which is the app's central security property — and the ten that do skip
+That last line runs both projects, not only the fast one. Twenty-two of the
+thirty-three integration tests need no launcher — among them every untrusted-issuer
+refusal, which is the app's central security property — and the eleven that do skip
 themselves. The whole job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the
