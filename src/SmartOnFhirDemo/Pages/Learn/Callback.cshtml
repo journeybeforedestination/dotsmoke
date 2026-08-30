@@ -1,0 +1,27 @@
+@page "/learn/callback"
+@model SmartOnFhirDemo.Pages.Learn.CallbackModel
+@{
+    ViewData["Title"] = "Back from the EHR";
+}
+
+<partial name="_Step" model="Model.Step" />
+
+@*
+    The code travels back in the form rather than being stashed on the server between
+    the two requests. It is a credential, and the browser is already holding it — it is
+    in the address bar and in history the moment the EHR redirects here. Caching a copy
+    server-side to avoid a hidden field would create a second place it lives, not a
+    safer one. What the page *shows* is still only enough of it to recognise.
+*@
+<form method="post" class="next">
+    <input type="hidden" asp-for="Code" />
+    <input type="hidden" asp-for="State" />
+    <button type="submit">Exchange the code &rarr;</button>
+</form>
+
+<p class="aside">
+    Worth knowing before you linger: the SMART specification expects an authorization code
+    to expire <em>“within around one minute”</em>. The SMART App Launcher is more generous
+    at five, which is what makes this pause practical at all. Against a production EHR the
+    same pause would often fail — which is itself the reason the plain launch does not take it.
+</p>

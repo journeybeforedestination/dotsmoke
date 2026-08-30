@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using SmartOnFhirDemo;
 
@@ -27,28 +26,15 @@ app.MapGet("/launch", async (
 {
     var redirectUri = $"{request.Scheme}://{request.Host}/callback";
 
-    return await smart.BeginAsync(iss, launch, redirectUri, ct) switch
-    {
-        LaunchOutcome.Prepared prepared => Remember(prepared),
+    var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
 
-        LaunchOutcome.MissingParameters =>
-            Fail("This URL is meant to be opened by an EHR: both 'iss' and 'launch' query parameters are required."),
+    return outcome is LaunchOutcome.Prepared prepared
+        ? Remember(prepared)
+        : Fail(LaunchMessages.For(outcome));
 
-        // The issuer is deliberately not echoed back: it is attacker-controlled, and the
-        // rejected value belongs in the log rather than on a page.
-        LaunchOutcome.UntrustedIssuer =>
-            Fail("This app is not registered to launch from that EHR. Add its issuer to Smart:TrustedIssuers to allow it."),
-
-        LaunchOutcome.DiscoveryFailed(var wellKnown, var reason) =>
-            Fail($"Could not read the SMART configuration from {wellKnown} — {reason}"),
-
-        var outcome => throw new UnreachableException($"Unhandled launch outcome: {outcome.GetType().Name}."),
-    };
-
-    // Only the state and PKCE verifier need to survive the trip through the EHR.
     IResult Remember(LaunchOutcome.Prepared prepared)
     {
-        cache.Set(Smart.CacheKey(prepared.State), prepared.Session, TimeSpan.FromMinutes(5));
+        cache.Remember(prepared);
         return Results.Redirect(prepared.AuthorizeUrl);
     }
 

@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
@@ -17,8 +16,18 @@ public abstract record LaunchOutcome
 {
     private LaunchOutcome() { }
 
-    /// <summary>Ready to hand the browser to the EHR. The session must outlive the redirect.</summary>
-    public sealed record Prepared(string AuthorizeUrl, string State, LaunchState Session) : LaunchOutcome;
+    /// <summary>
+    /// Ready to hand the browser to the EHR. The session must outlive the redirect.
+    /// <paramref name="WellKnownUrl"/> and <paramref name="ConfigurationJson"/> record
+    /// where discovery looked and what it got; nothing in either is secret, and the
+    /// plain launch simply ignores them.
+    /// </summary>
+    public sealed record Prepared(
+        string AuthorizeUrl,
+        string State,
+        LaunchState Session,
+        string WellKnownUrl,
+        string ConfigurationJson) : LaunchOutcome;
 
     public sealed record MissingParameters : LaunchOutcome;
 
@@ -33,7 +42,18 @@ public abstract record CallbackOutcome
 {
     private CallbackOutcome() { }
 
-    public sealed record Completed(PatientSummary Summary, string RawJson) : CallbackOutcome;
+    /// <summary>
+    /// The launch finished. <paramref name="TokenJson"/> is the token response with the
+    /// credentials already removed, and <paramref name="Token"/> is everything it said
+    /// apart from them — the access token itself is not on this record at all, so no
+    /// caller can render or store it.
+    /// </summary>
+    public sealed record Completed(
+        PatientSummary Summary,
+        string RawJson,
+        TokenFacts Token,
+        string TokenJson,
+        string PatientUrl) : CallbackOutcome;
 
     public sealed record MissingParameters : CallbackOutcome;
 
@@ -85,10 +105,17 @@ public sealed class SmartLaunch(
 
         var wellKnown = $"{iss.TrimEnd('/')}/.well-known/smart-configuration";
 
+        // Read the document as text and then parse it, rather than straight into the
+        // two fields this app uses: the learn pages show what the EHR actually published.
+        string configJson;
         SmartConfiguration? config;
         try
         {
-            config = await clients.CreateClient().GetFromJsonAsync<SmartConfiguration>(wellKnown, ct);
+            using var discovery = await clients.CreateClient().GetAsync(wellKnown, ct);
+            discovery.EnsureSuccessStatusCode();
+
+            configJson = await discovery.Content.ReadAsStringAsync(ct);
+            config = JsonSerializer.Deserialize<SmartConfiguration>(configJson);
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or NotSupportedException)
         {
@@ -105,7 +132,9 @@ public sealed class SmartLaunch(
         return new LaunchOutcome.Prepared(
             Smart.BuildAuthorizeUrl(config, Options, redirectUri, iss, launch, state, challenge),
             state,
-            new LaunchState(iss, config.TokenEndpoint, verifier, redirectUri));
+            new LaunchState(iss, config.TokenEndpoint, verifier, redirectUri),
+            wellKnown,
+            configJson);
     }
 
     /// <summary>
@@ -140,23 +169,39 @@ public sealed class SmartLaunch(
         });
 
         using var response = await clients.CreateClient().PostAsync(launch.TokenEndpoint, form, ct);
-        if (!response.IsSuccessStatusCode)
-            return new CallbackOutcome.TokenExchangeFailed(
-                (int)response.StatusCode, await response.Content.ReadAsStringAsync(ct));
+        var body = await response.Content.ReadAsStringAsync(ct);
 
-        var token = await response.Content.ReadFromJsonAsync<TokenResponse>(ct);
+        if (!response.IsSuccessStatusCode)
+            return new CallbackOutcome.TokenExchangeFailed((int)response.StatusCode, body);
+
+        TokenResponse? token;
+        try
+        {
+            token = JsonSerializer.Deserialize<TokenResponse>(body);
+        }
+        catch (JsonException)
+        {
+            return new CallbackOutcome.NoAccessToken();
+        }
+
         if (token is null || string.IsNullOrEmpty(token.AccessToken))
             return new CallbackOutcome.NoAccessToken();
 
         if (string.IsNullOrEmpty(token.Patient))
             return new CallbackOutcome.NoPatientContext();
 
-        return await ReadPatientAsync(launch.Iss, token, ct);
+        // The only point at which the response body and the credentials part company.
+        // Everything downstream sees the redacted copy.
+        var tokenJson = Smart.Redact(body, "access_token", "refresh_token", "id_token");
+
+        return await ReadPatientAsync(launch.Iss, token, tokenJson, ct);
     }
 
     private async Task<CallbackOutcome> ReadPatientAsync(
-        string iss, TokenResponse token, CancellationToken ct)
+        string iss, TokenResponse token, string tokenJson, CancellationToken ct)
     {
+        var patientUrl = $"{iss.TrimEnd('/')}/Patient/{token.Patient}";
+
         var http = clients.CreateClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
 
@@ -172,7 +217,12 @@ public sealed class SmartLaunch(
 
             return patient is null
                 ? new CallbackOutcome.PatientNotFound(iss, token.Patient!)
-                : new CallbackOutcome.Completed(PatientSummary.From(patient), patient.ToJson(pretty: true));
+                : new CallbackOutcome.Completed(
+                    PatientSummary.From(patient),
+                    patient.ToJson(pretty: true),
+                    TokenFacts.From(token),
+                    tokenJson,
+                    patientUrl);
         }
         catch (FhirOperationException ex)
         {

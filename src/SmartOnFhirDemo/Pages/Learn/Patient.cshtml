@@ -1,0 +1,24 @@
+@page "/learn/patient"
+@model SmartOnFhirDemo.Pages.Learn.PatientModel
+@{
+    ViewData["Title"] = "The patient read";
+}
+
+<partial name="_Step" model="Model.Step" />
+
+<section class="step">
+    <h2>The summary this app renders</h2>
+    <p>
+        The projection of that resource down to seven fields — the whole of what this
+        particular app was built to do, and the reason it needed everything above.
+    </p>
+    <partial name="_Summary" model="Model.Summary" />
+</section>
+
+<p class="next"><a href="/">&larr; Back to the start</a></p>
+
+<p class="aside">
+    Nothing above is kept. The access token was used once, in the request on this page,
+    and discarded. What made this walkthrough readable is a redacted account of the launch,
+    held in memory for five minutes and then gone — along with the patient data on this page.
+</p>

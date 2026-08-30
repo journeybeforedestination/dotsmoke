@@ -1,0 +1,11 @@
+@page "/learn/token"
+@model SmartOnFhirDemo.Pages.Learn.TokenModel
+@{
+    ViewData["Title"] = "The token response";
+}
+
+<partial name="_Step" model="Model.Step" />
+
+<p class="next">
+    <a class="button" asp-page="/Learn/Patient" asp-route-state="@Model.State">Read the patient &rarr;</a>
+</p>

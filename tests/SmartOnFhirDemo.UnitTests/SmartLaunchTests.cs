@@ -195,11 +195,117 @@ public class SmartLaunchTests
             await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
     }
 
+    // ---- What a finished launch is allowed to carry ------------------------
+    //
+    // The narrated launch renders these outcomes, so the guarantee that a page cannot
+    // leak the access token is the guarantee that the token is not on them.
+
+    [Fact]
+    public async Task A_completed_launch_carries_what_the_token_said_but_not_the_token()
+    {
+        var smart = Completing(TokenJson);
+
+        var completed = Assert.IsType<CallbackOutcome.Completed>(
+            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain(AccessToken, completed.TokenJson);
+        Assert.Contains(SmartOnFhirDemo.Smart.Withheld, completed.TokenJson);
+        Assert.DoesNotContain(AccessToken, completed.RawJson);
+
+        Assert.Equal("Bearer", completed.Token.TokenType);
+        Assert.Equal(3600, completed.Token.ExpiresIn);
+        Assert.Equal("launch patient/Patient.read", completed.Token.Scope);
+        Assert.Equal("pat-1", completed.Token.Patient);
+        Assert.Equal($"{Iss}/Patient/pat-1", completed.PatientUrl);
+    }
+
+    [Fact]
+    public async Task Every_credential_the_token_endpoint_returns_is_removed_not_just_the_access_token()
+    {
+        var smart = Completing(
+            """
+            {"access_token":"a-token","refresh_token":"a-refresh","id_token":"an-id","patient":"pat-1"}
+            """);
+
+        var completed = Assert.IsType<CallbackOutcome.Completed>(
+            await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain("a-token", completed.TokenJson);
+        Assert.DoesNotContain("a-refresh", completed.TokenJson);
+        Assert.DoesNotContain("an-id", completed.TokenJson);
+    }
+
+    [Fact]
+    public async Task The_access_token_is_still_presented_to_the_fhir_server()
+    {
+        // Withheld from the caller, not from the request it exists for.
+        string? presented = null;
+        var smart = Completing(TokenJson, request =>
+        {
+            if (request.RequestUri!.AbsolutePath.Contains("/Patient/"))
+                presented = request.Headers.Authorization?.ToString();
+        });
+
+        await smart.CompleteAsync("the-code", "the-state", null, null, Session, TestContext.Current.CancellationToken);
+
+        Assert.Equal($"Bearer {AccessToken}", presented);
+    }
+
+    [Fact]
+    public async Task A_prepared_launch_keeps_the_configuration_it_discovered()
+    {
+        // The narrated launch shows the document the EHR published, not just the two
+        // fields this app parses out of it.
+        var smart = Smart(_ => Json(Configuration));
+
+        var prepared = Assert.IsType<LaunchOutcome.Prepared>(
+            await smart.BeginAsync(Iss, "launch-123", RedirectUri, TestContext.Current.CancellationToken));
+
+        Assert.Equal($"{Iss}/.well-known/smart-configuration", prepared.WellKnownUrl);
+        Assert.Contains("authorization_endpoint", prepared.ConfigurationJson);
+    }
+
     // ---- Plumbing ---------------------------------------------------------
 
     private const string Configuration = """
         {"authorization_endpoint":"https://ehr.example/authorize","token_endpoint":"https://ehr.example/token"}
         """;
+
+    private const string AccessToken = "the-access-token";
+
+    private const string TokenJson = """
+        {"access_token":"the-access-token","token_type":"Bearer","expires_in":3600,
+         "scope":"launch patient/Patient.read","patient":"pat-1"}
+        """;
+
+    /// <summary>Enough of a CapabilityStatement for FhirClientSettings.VerifyFhirVersion.</summary>
+    private const string CapabilityStatement = """
+        {"resourceType":"CapabilityStatement","status":"active","date":"2024-01-01",
+         "kind":"instance","fhirVersion":"4.0.1","format":["json"]}
+        """;
+
+    private const string PatientJson = """
+        {"resourceType":"Patient","id":"pat-1","gender":"female",
+         "name":[{"family":"Rivera","given":["Alex"]}]}
+        """;
+
+    /// <summary>
+    /// A launch that runs all the way through: the token exchange, the version check the
+    /// Firely client makes first, and then the patient read.
+    /// </summary>
+    private static SmartLaunch Completing(string tokenJson, Action<HttpRequestMessage>? observe = null) =>
+        Smart(request =>
+        {
+            observe?.Invoke(request);
+
+            var path = request.RequestUri!.AbsolutePath;
+            return path.EndsWith("/metadata") ? Fhir(CapabilityStatement)
+                 : path.Contains("/Patient/") ? Fhir(PatientJson)
+                 : Json(tokenJson);
+        });
+
+    private static HttpResponseMessage Fhir(string body) =>
+        new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/fhir+json") };
 
     private static SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
         new(new StubClientFactory(new StubHandler(respond)),

@@ -25,6 +25,37 @@
         }
         details { margin-top: 2rem; }
         summary { cursor: pointer; opacity: .7; }
+
+        /* The narrated launch: a run of steps, each a heading, a paragraph, and a
+           label/value table where every value gets a sentence explaining itself. */
+        .lead { margin-bottom: 2.5rem; }
+        .step { margin: 2.5rem 0; }
+        .step h2 { font-size: 1.0625rem; margin: 0 0 .5rem; }
+        .step > p { margin: 0 0 1.25rem; }
+        .step dl { gap: 1rem 1.5rem; align-items: baseline; }
+        .step dt {
+            font-family: ui-monospace, monospace;
+            font-size: .8125rem;
+            font-weight: 400;
+        }
+        .step dd code { overflow-wrap: anywhere; }
+        .step pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+        .note { margin: .375rem 0 0; font-size: .875rem; opacity: .7; }
+
+        .next { margin-top: 2.5rem; }
+        .button, .next button {
+            display: inline-block;
+            font: inherit;
+            font-weight: 600;
+            padding: .625rem 1.125rem;
+            border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+            border-radius: .375rem;
+            background: none;
+            color: inherit;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .aside { margin-top: 1.5rem; font-size: .875rem; opacity: .65; }
         footer {
             margin-top: 3rem;
             padding-top: 1rem;

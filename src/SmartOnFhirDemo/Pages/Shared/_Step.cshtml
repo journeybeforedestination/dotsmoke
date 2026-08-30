@@ -1,0 +1,28 @@
+@model LaunchStep
+
+<section class="step">
+    <h2>@Model.Title</h2>
+    <p>@Model.Explanation</p>
+
+    <dl>
+        @foreach (var field in Model.Fields)
+        {
+            <dt>@field.Label</dt>
+            <dd>
+                <code>@field.Value</code>
+                @if (field.Note.Length > 0)
+                {
+                    <p class="note">@field.Note</p>
+                }
+            </dd>
+        }
+    </dl>
+
+    @if (Model.Payload is not null)
+    {
+        <details>
+            <summary>@Model.PayloadLabel</summary>
+            <pre>@Model.Payload</pre>
+        </details>
+    }
+</section>

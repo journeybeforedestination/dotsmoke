@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace SmartOnFhirDemo.UnitTests;
@@ -60,6 +61,57 @@ public class SmartTests
     {
         Assert.Equal("launch:abc", Smart.CacheKey("abc"));
         Assert.NotEqual(Smart.CacheKey("a"), Smart.CacheKey("b"));
+    }
+
+    // ---- Redaction --------------------------------------------------------
+    //
+    // The narrated launch renders the token response, so this is what stands between a
+    // reader and a live bearer credential. It is the reason SmartLaunch can hand the
+    // response body onwards at all.
+
+    [Fact]
+    public void Redact_replaces_the_named_values_and_leaves_the_rest()
+    {
+        var redacted = Smart.Redact(
+            """{"access_token":"the-token","token_type":"Bearer","expires_in":3600,"patient":"pat-1"}""",
+            "access_token");
+
+        Assert.DoesNotContain("the-token", redacted);
+        Assert.Contains(Smart.Withheld, redacted);
+        Assert.Contains("Bearer", redacted);
+        Assert.Contains("3600", redacted);
+        Assert.Contains("pat-1", redacted);
+    }
+
+    [Fact]
+    public void Redact_removes_every_credential_the_token_endpoint_can_return()
+    {
+        var redacted = Smart.Redact(
+            """{"access_token":"a","refresh_token":"r","id_token":"i","scope":"launch"}""",
+            "access_token", "refresh_token", "id_token");
+
+        Assert.Equal(3, Regex.Matches(redacted, Regex.Escape(Smart.Withheld)).Count);
+        Assert.Contains("launch", redacted);
+    }
+
+    [Fact]
+    public void Redact_is_a_no_op_for_a_key_that_is_not_there()
+    {
+        var redacted = Smart.Redact("""{"scope":"launch"}""", "refresh_token");
+
+        Assert.DoesNotContain(Smart.Withheld, redacted);
+        Assert.Contains("launch", redacted);
+    }
+
+    [Theory]
+    [InlineData("this is not json")]
+    [InlineData("")]
+    [InlineData("""["access_token","the-token"]""")]
+    public void Redact_discards_anything_it_cannot_take_apart(string body)
+    {
+        // Passing the body through unchanged would defeat the point: the reason to call
+        // this is that the document is believed to hold a credential.
+        Assert.Equal(Smart.Withheld, Smart.Redact(body, "access_token"));
     }
 
     // ---- Authorize URL ----------------------------------------------------

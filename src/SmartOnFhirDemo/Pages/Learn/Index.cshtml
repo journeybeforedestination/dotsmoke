@@ -1,0 +1,26 @@
+@page "/learn"
+@model SmartOnFhirDemo.Pages.Learn.IndexModel
+@{
+    ViewData["Title"] = "The launch, step by step";
+}
+
+<p class="lead">
+    This is a real SMART launch from a real EHR, stopped at each point where something
+    happened, so you can see what was exchanged and why. Nothing here is simulated —
+    the same code runs behind <code>/launch</code>, which does all of this without pausing.
+</p>
+
+@foreach (var step in Model.Steps)
+{
+    <partial name="_Step" model="step" />
+}
+
+<p class="next">
+    <a class="button" href="@Model.AuthorizeUrl">Continue to the EHR &rarr;</a>
+</p>
+
+<p class="aside">
+    Your browser leaves this app now. What happens at the EHR — logging in, choosing a
+    patient, granting consent — is the EHR's business, not the app's, and the app learns
+    nothing about it beyond what comes back in the next step.
+</p>

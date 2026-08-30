@@ -47,6 +47,13 @@ public class AppFixture : IAsyncDisposable
             BaseAddress = new Uri($"http://{AppHost}"),
         };
 
+    /// <summary>
+    /// A client that stops at the first response instead of following it, for tests that
+    /// assert on a redirect rather than on where it leads.
+    /// </summary>
+    public HttpClient CreateDirectClient() =>
+        new(_app.Server.CreateHandler()) { BaseAddress = new Uri($"http://{AppHost}") };
+
     public async Task<string> GetAsync(string url)
     {
         using var client = CreateChainClient();

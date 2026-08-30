@@ -74,4 +74,71 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
 
         Assert.Contains($"http://{AppFixture.AppHost}/launch", html);
     }
+
+    [Fact]
+    public async Task The_home_page_offers_the_narrated_launch_as_well()
+    {
+        var html = await app.GetAsync("/");
+
+        Assert.Contains($"http://{AppFixture.AppHost}/learn", html);
+    }
+
+    // ---- The narrated launch fails the same way the plain one does ---------
+
+    [Theory]
+    [InlineData("/learn")]
+    [InlineData("/learn?iss=https://ehr.example/fhir")]
+    public async Task A_narrated_launch_url_opened_directly_explains_itself(string url)
+    {
+        var html = await app.GetAsync(url);
+
+        Assert.Contains("meant to be opened by an EHR", html);
+    }
+
+    [Fact]
+    public async Task A_narrated_launch_from_an_untrusted_issuer_is_refused_without_echoing_it()
+    {
+        var html = await app.GetAsync("/learn?iss=https://evil.example/fhir&launch=irrelevant");
+
+        Assert.Contains("not registered to launch from that EHR", html);
+
+        // Showing the issuer is the whole point of the narrated launch — except this one,
+        // which is attacker-controlled and belongs in the log.
+        Assert.DoesNotContain("evil.example", html);
+    }
+
+    [Fact]
+    public async Task A_narrated_callback_for_an_unknown_launch_is_refused()
+    {
+        var html = await app.GetAsync("/learn/callback?code=whatever&state=never-issued");
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Theory]
+    [InlineData("/learn/token?state=never-issued")]
+    [InlineData("/learn/patient?state=never-issued")]
+    public async Task A_walkthrough_page_without_a_transcript_says_so(string url)
+    {
+        var html = await app.GetAsync(url);
+
+        Assert.Contains("This walkthrough has expired", html);
+    }
+
+    [Theory]
+    [InlineData("/learn")]
+    [InlineData("/learn/callback")]
+    [InlineData("/learn/token?state=never-issued")]
+    [InlineData("/learn/patient?state=never-issued")]
+    public async Task Every_narrated_launch_route_refuses_to_be_stored(string url)
+    {
+        // Not followed: the header goes on whatever the learn route itself answers, and
+        // asserting it on all four proves the filter is wired to all four.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(url);
+
+        // These pages carry a live authorization code, patient demographics and a whole
+        // FHIR resource. Nothing between here and the reader may keep a copy.
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
+    }
 }

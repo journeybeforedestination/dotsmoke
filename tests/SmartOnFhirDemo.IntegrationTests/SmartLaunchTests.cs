@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.RegularExpressions;
 
 namespace SmartOnFhirDemo.IntegrationTests;
@@ -90,6 +91,65 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         var html = await LaunchAsync("token_invalid_token");
 
         Assert.Contains("Token exchange failed", html);
+    }
+
+    // ---- The same launch, narrated ----------------------------------------
+
+    /// <summary>
+    /// Drives the narrated launch as far as the pause before the exchange: the opening
+    /// page, then the trip out to the EHR and back to /learn/callback. The exchange
+    /// itself is a form post, and is covered against a stub in the unit tests.
+    /// </summary>
+    private async Task<(string Opening, string Pause)> LearnAsync()
+    {
+        var launch = LaunchParams.Encode(launcher.PatientId);
+        var url = $"/learn?iss={Uri.EscapeDataString(launcher.Iss(launch))}" +
+                  $"&launch={Uri.EscapeDataString(launch)}";
+
+        using var client = launcher.CreateChainClient();
+
+        using var opening = await client.GetAsync(url);
+        Assert.True(opening.IsSuccessStatusCode, $"The narrated launch ended at {(int)opening.StatusCode}.");
+        var openingHtml = await opening.Content.ReadAsStringAsync();
+
+        // The continue button leads where the plain launch would have sent a 302.
+        var authorize = WebUtility.HtmlDecode(
+            Regex.Match(openingHtml, "class=\"button\" href=\"(?<url>[^\"]+)\"").Groups["url"].Value);
+        Assert.NotEmpty(authorize);
+
+        using var pause = await client.GetAsync(authorize);
+        Assert.True(pause.IsSuccessStatusCode, $"The EHR round trip ended at {(int)pause.StatusCode}.");
+
+        return (openingHtml, await pause.Content.ReadAsStringAsync());
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_narrated_launch_explains_the_request_before_it_is_sent()
+    {
+        var (opening, _) = await LearnAsync();
+
+        Assert.Contains("What the EHR sent", opening);
+        Assert.Contains("What the app discovered", opening);
+        Assert.Contains("What the app is about to send", opening);
+
+        // The endpoints on the page came out of the EHR's own configuration, not a guess.
+        Assert.Contains("/auth/authorize", opening);
+        Assert.Contains("/auth/token", opening);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_narrated_callback_pauses_on_a_code_it_has_not_spent()
+    {
+        var (_, pause) = await LearnAsync();
+
+        Assert.Contains("The EHR sent your browser back", pause);
+
+        // Shown as an abbreviation with its length, never in full.
+        Assert.Matches(@"<dt>code</dt>\s*<dd>\s*<code>[^<]*characters\)</code>", pause);
+
+        // The verifier is named on the pending request, and withheld from it.
+        Assert.Contains("code_verifier", pause);
+        Assert.Contains("(withheld)", pause);
     }
 
     // ---- Helpers ----------------------------------------------------------

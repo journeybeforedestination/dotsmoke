@@ -1,7 +1,8 @@
 # dotsmoke
 
 A minimal SMART on FHIR app that handles a standard EHR launch end to end, then
-renders a short summary of the patient in context.
+renders a short summary of the patient in context — and, on a second launch URL,
+walks you through the same launch a step at a time while it happens.
 
 Built as a proof of concept against the public
 [SMART App Launcher](https://launch.smarthealthit.org/), on .NET 10, ASP.NET Core
@@ -19,6 +20,40 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
   app  render summary; access token discarded
 ```
 
+## The same launch, narrated
+
+`/learn` is the second launch URL. It runs the identical protocol against the identical
+EHR — same trust check, same discovery, same PKCE, same token exchange — but stops where
+the plain launch redirects, and explains what was exchanged before going on.
+
+```
+SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
+  app  discovery, PKCE, authorize URL          ──▶ ① what the EHR sent
+                                                   ② what discovery returned
+                                                   ③ what is about to be sent   [continue]
+  launcher (provider login → patient/consent) ──302──▶ app /learn/callback?code=…&state=…
+  app                                          ──▶ ④ the code, still unspent    [exchange]
+  app ──POST {token}──▶ token used once, discarded, transcript kept
+  app ──GET {iss}/Patient/{id}  Bearer──▶ Patient
+  app  ──302──▶ /learn/token   ──▶ ⑤ what the token endpoint returned           [continue]
+               /learn/patient  ──▶ ⑥ the FHIR read, and the summary
+```
+
+Three of those are real pauses in a real launch, not a replay. Steps ⑤ and ⑥ read back a
+transcript of the exchange that the token was already removed from, which is what lets
+them be ordinary linkable pages without the launch holding a credential open.
+
+What the pages never show: the PKCE verifier, the access token, and — when the issuer is
+refused — the issuer. What they do show, because you learn nothing otherwise: the granted
+scope, the resolved patient context, the full SMART configuration the EHR published, the
+token response with its credentials replaced, and enough of the authorization code to
+recognise it. The code is live and unspent at step ④, which is exactly the point being
+made there: without the verifier, which never leaves the server, it cannot be redeemed.
+
+Pausing at step ④ works because the SMART App Launcher issues codes that live five
+minutes. The specification expects "around one minute", so the same pause would often
+fail against a production EHR — which is why `/launch` does not take it.
+
 ## Running it
 
 ```bash
@@ -31,10 +66,11 @@ Then at [launch.smarthealthit.org](https://launch.smarthealthit.org/):
 | --- | --- |
 | Launch Type | Provider EHR Launch |
 | FHIR Version | R4 |
-| App's Launch URL | `http://localhost:5000/launch` |
+| App's Launch URL | `http://localhost:5000/learn` or `http://localhost:5000/launch` |
 | Client ID, Redirect URIs | leave blank |
 
-Pick a patient, press **Launch**.
+Pick a patient, press **Launch**. `/learn` walks you through the handshake; `/launch`
+does the same thing without stopping and lands on the summary.
 
 To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
 `appsettings.json` — the app refuses launches from anywhere not on that list:
@@ -122,7 +158,19 @@ it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatemen
 - **Nothing is persisted.** Only the issuer and PKCE verifier survive the
   redirect, held in `IMemoryCache` under the OAuth `state` for five minutes. The
   access token is used once and discarded, so `/callback` renders in the same
-  request that exchanges the code.
+  request that exchanges the code — and so does `/learn`'s exchange, which is why
+  its later steps read a transcript rather than resume a live launch. That
+  transcript is the one thing the narrated launch adds to the cache: no credential,
+  but patient data, so it expires on the same five minutes and every `/learn` page
+  sends `Cache-Control: no-store`.
+- **Credentials are removed where they arrive, not where they render.**
+  `SmartLaunch` redacts the token response and projects it into `TokenFacts` before
+  returning; the access token is not a field on any outcome. A page cannot leak what
+  it was never handed, which beats a page that remembers not to print it.
+- **The explanation is a pure projection.** `LaunchTranscript` turns outcomes into
+  ordered steps with their fields, payloads and prose. It does no I/O and reaches
+  nothing but what it is given, so the narrated launch is readable and reviewable in
+  one file, and the pages stay markup.
 - **Firely does the FHIR work**, not just the HTTP call: FHIRPath for element
   selection, `EnumUtility` for coded display text, `Date` for partial birth
   dates, `OperationOutcome` for server errors.

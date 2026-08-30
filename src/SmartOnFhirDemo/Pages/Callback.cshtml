@@ -4,13 +4,7 @@
     ViewData["Title"] = "Patient summary";
 }
 
-<dl>
-    @foreach (var (label, value) in Model.Summary.Fields)
-    {
-        <dt>@label</dt>
-        <dd>@value</dd>
-    }
-</dl>
+<partial name="_Summary" model="Model.Summary" />
 
 <details>
     <summary>Raw Patient resource</summary>
