@@ -1,0 +1,22 @@
+# Keeping the dependencies current is what stops the CVE gate in CI from firing:
+# `dotnet build -warnaserror` turns a NuGet advisory into a build error, so an
+# unattended bump is worth more here than it would be in a repo that only warns.
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /src/SmartOnFhirDemo
+      - /tests/SmartOnFhirDemo.UnitTests
+      - /tests/SmartOnFhirDemo.IntegrationTests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      xunit:
+        patterns: ["xunit*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

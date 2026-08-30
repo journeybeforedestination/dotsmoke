@@ -113,34 +113,47 @@ than on specific patient data — that sandbox can be reseeded.
 
 [launcher]: https://github.com/smart-on-fhir/smart-launcher-v2
 
-### If you wire up CI
+### CI
 
-None of this is wired up, but the constraints are known.
+`.github/workflows/ci.yml` runs on every push and pull request:
 
-The integration tests reach two things outside your control. Pulling the launcher
-image is free on GitHub-hosted runners, which are exempt from Docker Hub's limits
-for public images; self-hosted runners are not, and share a low anonymous quota per
-IP, so authenticate or mirror the image. The larger risk is the sandbox the launcher
+```bash
+dotnet tool restore
+dotnet csharpier check .                 # no network, no container, under a second
+dotnet restore --locked-mode
+dotnet build --no-restore -warnaserror
+dotnet test --no-build
+```
+
+That last line runs both projects, not only the fast one. Twenty-one of the thirty
+integration tests need no launcher — among them every untrusted-issuer refusal,
+which is the app's central security property — and the nine that do skip themselves.
+The whole job stays offline.
+
+The launcher-bound tests run in a second job, nightly and on demand, which starts the
+container first. Because those tests skip themselves when `SMART_LAUNCHER_URL`
+answers nothing, a container that failed to start would leave the job green while
+testing nothing — so the job polls the launcher's FHIR endpoint and fails there
+instead, where the cause is legible.
+
+That job reaches two things outside your control. Pulling the launcher image is free
+on GitHub-hosted runners, which are exempt from Docker Hub's limits for public
+images; self-hosted runners are not, and share a low anonymous quota per IP, so
+authenticate or mirror the image. The larger risk is the sandbox the launcher
 proxies: `r4.smarthealthit.org` reports `Smile CDR 2019.08.PRE / HAPI FHIR
 4.0.0-SNAPSHOT`, a 2019 pre-release, with no SLA, no status page to gate on, and no
 rate-limit headers. It answers in milliseconds today, but it can be down, reseeded,
-or throttled without notice.
-
-Only reseeding constrains the tests as written, and they already assert on the shape
-of the rendered summary rather than on specific patient data.
-
-The two projects suggest their own CI shape: run the unit tests on every push — fast,
-offline, gating pull requests — and the integration tests nightly and on demand,
-where a red run is real signal about either the code or the sandbox rather than noise
-on someone's branch.
-
-The cheapest gate to add is not a test at all: `dotnet csharpier check .` needs no
-network, no container and no sandbox, and fails in under a second.
+or throttled without notice. Only reseeding constrains the tests as written, and they
+already assert on the shape of the rendered summary rather than on specific patient
+data.
 
 To go hermetic, point the launcher at your own FHIR server with `FHIR_SERVER_R4`;
 that touches the fixture only, not the tests. Either run `hapiproject/hapi` and seed
 it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatement` —
 `VerifyFhirVersion` means the app fetches that first — along with `/Patient/{id}`.
+
+`.github/dependabot.yml` proposes NuGet and action updates weekly. It does not cover
+`.config/dotnet-tools.json`, so the CSharpier pin is bumped by hand.
 
 ## Formatting
 
@@ -186,9 +199,8 @@ The .NET SDK ships Roslyn analyzers and runs a small subset of them by default.
 <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 ```
 
-Warnings while you type; `dotnet build -warnaserror` turns them into errors for an
-unattended build. Nothing extra is installed to get this: no third-party analyzer
-package. The
+Warnings while you type, errors in CI — `dotnet build -warnaserror` is the gate.
+Nothing extra is installed to get this: no third-party analyzer package. The
 security category runs at maximum because on this code it reports nothing, which
 is worth having for free in an app that fetches a URL handed to it in a query
 parameter.

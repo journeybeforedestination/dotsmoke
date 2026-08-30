@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # The integration tests drive a real launcher against a public sandbox. Nightly is
+  # often enough to learn that either has broken, and rare enough that a red run is
+  # signal rather than noise on someone's branch.
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Format, analyzers, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      - name: Restore the pinned formatter
+        run: dotnet tool restore
+
+      # Cheapest gate here: no network, no container, under a second.
+      - name: Check formatting
+        run: dotnet csharpier check .
+
+      # --locked-mode refuses to resolve anything the lock files do not already name.
+      # This step is also where a newly published advisory surfaces, as NU1901-1904.
+      - name: Restore
+        run: dotnet restore --locked-mode
+
+      - name: Build
+        run: dotnet build --no-restore -warnaserror
+
+      # Both projects. Twenty-one of the integration tests need no launcher — among
+      # them every untrusted-issuer refusal — and the nine that do skip themselves.
+      - name: Test
+        run: dotnet test --no-build
+
+  integration:
+    name: Integration tests against a live launcher
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SMART_LAUNCHER_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      # Pinned by digest because the launcher publishes only a `latest` tag.
+      - name: Start the SMART App Launcher
+        run: |
+          docker run -d --name smart-launcher -p 8080:80 \
+            smartonfhir/smart-launcher-2@sha256:72bd3e3c682ce4c74e6dddb605d89acad7c8aae446ae38079e8dfe8455b84793
+
+      # Without this the job would pass while testing nothing: the launcher-bound
+      # tests carry SkipUnless and quietly skip when SMART_LAUNCHER_URL answers
+      # nothing. Fail here instead, where the cause is legible.
+      - name: Wait for the launcher
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS "$SMART_LAUNCHER_URL/v/r4/fhir/Patient?_count=1" >/dev/null; then
+              echo "Launcher is answering."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::No launcher at $SMART_LAUNCHER_URL after 60s"
+          docker logs smart-launcher || true
+          exit 1
+
+      - name: Restore
+        run: dotnet restore --locked-mode
+
+      - name: Build
+        run: dotnet build --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test --no-build
