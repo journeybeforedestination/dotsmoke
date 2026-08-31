@@ -69,10 +69,19 @@ public class AppFixture : IAsyncDisposable
     public HttpClient CreateDirectClient() =>
         new(_app.Server.CreateHandler()) { BaseAddress = new Uri($"http://{AppHost}") };
 
-    public async Task<string> GetAsync(string url)
+    /// <param name="cookie">
+    /// What the browser is claiming to be. There is no cookie container here on purpose:
+    /// a test that wants to be a particular browser says so.
+    /// </param>
+    public async Task<string> GetAsync(string url, string? cookie = null)
     {
         using var client = CreateChainClient();
-        using var response = await client.GetAsync(url);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        if (cookie is not null)
+            request.Headers.Add("Cookie", cookie);
+
+        using var response = await client.SendAsync(request);
         return await response.Content.ReadAsStringAsync();
     }
 

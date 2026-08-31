@@ -20,8 +20,13 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
   app  validate id_token against the keys at {jwks_uri}
   app ──GET {iss}/Patient/{id}   Bearer──▶ Patient
   app ──GET {iss}/{fhirUser}     Bearer──▶ Practitioner
-  app  render summary; access token discarded
+  app  file the launch against the browser's session cookie
+  app ──302──▶ /summary?id={launchId}   ──▶ the summary, and anything read after it
 ```
+
+`/callback` renders nothing. It exchanges, files what it got against the browser, and
+sends the reader to a URL that names the launch — which takes the authorization code
+out of the address bar, and stops a refresh from re-sending a code already spent.
 
 ## Running it
 
@@ -117,7 +122,8 @@ Design decisions about the .NET side rather than about SMART.
 
 - **The protocol is separate from the web layer.** `SmartLaunch` does discovery,
   the authorization request, the token exchange and the patient read, returning a
-  closed set of outcomes; `/launch` and the callback page map those onto responses.
+  closed set of outcomes; the `/launch` and `/callback` endpoints map those onto
+  responses.
   That separation is what lets the launch be tested without a web host.
 - **The OAuth handshake is hand-rolled** over `HttpClient`. SMART reveals the
   issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
@@ -130,21 +136,29 @@ Design decisions about the .NET side rather than about SMART.
   the signing keys an EHR publishes, which are cached for an hour under their own
   URL because they are public, identical for every launch, and rotate on the order
   of months. The
-  access token is used once and discarded, so `/callback` renders in the same
-  request that exchanges the code — and so does `/learn`'s exchange, which is why
-  its later steps read a transcript rather than resume a live launch. That
-  transcript is the one thing the narrated launch adds to the cache: no credential,
-  but patient data, so it expires on the same five minutes and every `/learn` page
-  sends `Cache-Control: no-store`.
+  access token now outlives the request that fetched it, filed against the browser's
+  session cookie and expiring when the EHR said it stops working — that is what a
+  summary you can return to costs, and it is why the cookie is `HttpOnly` and the
+  launch id is 256 bits of CSPRNG. `/learn`'s exchange still spends its token and
+  drops it, which is why its later steps read a transcript rather than resume a live
+  launch. That transcript is the one thing the narrated launch adds to the cache: no
+  credential, but patient data, so it expires on five minutes, and `/learn` and
+  `/summary` alike send `Cache-Control: no-store`.
 - **The launching user is projected off the base resource.** `fhirUser` may name a
   Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
   `identifier` with FHIRPath against `Resource` — which handles all four in less code
   than handling one would take alone. It keeps a name's `prefix`, because "Dr.
   Albertine Orn" is most of how a clinician is addressed.
-- **Credentials are removed where they arrive, not where they render.**
-  `SmartLaunch` redacts the token response and projects it into `TokenFacts` before
-  returning; the access token is not a field on any outcome. A page cannot leak what
-  it was never handed, which beats a page that remembers not to print it.
+- **A credential never reaches a page model.** A summary you can come back to needs
+  the access token to outlive the request that fetched it, so the old rule — that
+  credentials are removed where they arrive — cannot hold as written. What replaces it
+  is a line drawn one level lower. `LaunchContext` names the token, and only the cache
+  and the code that makes FHIR requests ever see one; `LaunchFacts` is the same launch
+  with the token taken off, and it is what a page resolves to. `SmartLaunch` still
+  redacts the token response into `TokenFacts` before returning, and the token is on no
+  outcome at all — the context it establishes is a separate return, so the narrated
+  launch's transcript cannot acquire one by accident. A page cannot leak what it was
+  never handed, which beats a page that remembers not to print it.
 - **The explanation is a pure projection.** `LaunchTranscript` turns outcomes into
   ordered steps with their fields, payloads and prose. It does no I/O and reaches
   nothing but what it is given, so the narrated launch is readable and reviewable in
@@ -212,8 +226,8 @@ dotnet test --no-build --coverage --coverage-settings coverage.config \
 ./.github/coverage.sh                    # merge the two reports, report the rate
 ```
 
-That last line runs both projects, not only the fast one. Twenty-two of the
-thirty-three integration tests need no launcher — among them every untrusted-issuer
+That last line runs both projects, not only the fast one. Twenty-six of the
+thirty-seven integration tests need no launcher — among them every untrusted-issuer
 refusal, which is the app's central security property — and the eleven that do skip
 themselves. The whole job stays offline.
 

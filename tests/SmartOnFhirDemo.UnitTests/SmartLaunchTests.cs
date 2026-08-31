@@ -166,14 +166,16 @@ public class SmartLaunchTests
         var smart = Smart(_ => throw new Xunit.Sdk.XunitException("No token call should be made."));
 
         var outcome = Assert.IsType<CallbackOutcome.AuthorizationDenied>(
-            await smart.CompleteAsync(
-                null,
-                null,
-                "access_denied",
-                "The user said no",
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    null,
+                    null,
+                    "access_denied",
+                    "The user said no",
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         Assert.Equal("The user said no", outcome.Reason);
@@ -185,14 +187,16 @@ public class SmartLaunchTests
         var smart = Smart(_ => throw new Xunit.Sdk.XunitException("No token call should be made."));
 
         var outcome = Assert.IsType<CallbackOutcome.AuthorizationDenied>(
-            await smart.CompleteAsync(
-                null,
-                null,
-                "access_denied",
-                null,
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    null,
+                    null,
+                    "access_denied",
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         Assert.Equal("access_denied", outcome.Reason);
@@ -204,14 +208,16 @@ public class SmartLaunchTests
         var smart = Smart(_ => throw new Xunit.Sdk.XunitException("No token call should be made."));
 
         Assert.IsType<CallbackOutcome.UnknownLaunch>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                null,
-                null,
-                launch: null,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    launch: null,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
     }
 
@@ -248,14 +254,16 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("""{"error":"invalid_grant"}""", HttpStatusCode.BadRequest));
 
         var outcome = Assert.IsType<CallbackOutcome.TokenExchangeFailed>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                null,
-                null,
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         Assert.Equal(400, outcome.Status);
@@ -268,14 +276,16 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("""{"patient":"pat-1"}"""));
 
         Assert.IsType<CallbackOutcome.NoAccessToken>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                null,
-                null,
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
     }
 
@@ -285,14 +295,16 @@ public class SmartLaunchTests
         var smart = Smart(_ => Json("""{"access_token":"tok"}"""));
 
         Assert.IsType<CallbackOutcome.NoPatientContext>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                null,
-                null,
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
     }
 
@@ -307,14 +319,16 @@ public class SmartLaunchTests
         var smart = Completing(TokenJson);
 
         var completed = Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                null,
-                null,
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         Assert.DoesNotContain(AccessToken, completed.TokenJson);
@@ -338,14 +352,16 @@ public class SmartLaunchTests
         );
 
         var completed = Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                null,
-                null,
-                Session,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         Assert.DoesNotContain("a-token", completed.TokenJson);
@@ -426,14 +442,16 @@ public class SmartLaunchTests
         );
 
         return Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                error: null,
-                errorDescription: null,
-                session ?? SsoSession,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    error: null,
+                    errorDescription: null,
+                    session ?? SsoSession,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
     }
 
@@ -535,14 +553,16 @@ public class SmartLaunchTests
         );
 
         var completed = Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                error: null,
-                errorDescription: null,
-                SsoSession,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    error: null,
+                    errorDescription: null,
+                    SsoSession,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         // Following it would hand this server's access token to a server the token was
@@ -567,14 +587,16 @@ public class SmartLaunchTests
         });
 
         var completed = Assert.IsType<CallbackOutcome.Completed>(
-            await smart.CompleteAsync(
-                "the-code",
-                "the-state",
-                error: null,
-                errorDescription: null,
-                SsoSession,
-                TestContext.Current.CancellationToken
-            )
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    error: null,
+                    errorDescription: null,
+                    SsoSession,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
         );
 
         // An EHR is not obliged to grant user/Practitioner.read just because it was asked.

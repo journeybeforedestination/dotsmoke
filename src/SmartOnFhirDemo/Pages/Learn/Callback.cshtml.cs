@@ -44,7 +44,10 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache) : LearnPage(ca
 
     public async Task<IActionResult> OnPostAsync(CancellationToken ct)
     {
-        var outcome = await smart.CompleteAsync(
+        // The narrated launch keeps an account of a launch, not a live one: the context —
+        // and the credential on it — is dropped here, which is why its later steps read a
+        // transcript rather than resume anything.
+        var (outcome, _) = await smart.CompleteAsync(
             Code,
             State,
             error: null,

@@ -26,6 +26,10 @@ public class IndexModel(SmartLaunch smart, IMemoryCache cache) : LearnPage(cache
         if (outcome is not LaunchOutcome.Prepared prepared)
             return Fail(LaunchMessages.For(outcome));
 
+        // Same as the plain launch: a browser that starts a launch here gets its id here,
+        // whichever of the two launch URLs it used.
+        BrowserSession.Establish(HttpContext);
+
         Cache.Remember(prepared);
         Steps = LaunchTranscript.BeforeTheRedirect(prepared);
         AuthorizeUrl = prepared.AuthorizeUrl;

@@ -154,6 +154,13 @@ public static class Smart
     public static string CacheKey(string state) => $"launch:{state}";
 
     /// <summary>
+    /// Cache key for a launch that finished. Both halves are needed, and that is the
+    /// point: a cookie is per browser and a launch is per patient, so a session holding
+    /// one launch would let a second tab's patient quietly overwrite the first's.
+    /// </summary>
+    public static string ContextKey(string sid, string launchId) => $"context:{sid}:{launchId}";
+
+    /// <summary>
     /// Cache key for a finished launch the learn pages are still walking through. A
     /// separate namespace from <see cref="CacheKey"/>, which the same state already
     /// occupies while the launch is in flight.
@@ -186,7 +193,13 @@ public static class Smart
         }
     }
 
-    public static string NewState() => Base64Url(RandomNumberGenerator.GetBytes(32));
+    /// <summary>
+    /// 256 bits from the CSPRNG, base64url. What every id here that must not be guessed
+    /// or enumerated is made of: the OAuth state, the session cookie, the launch id.
+    /// </summary>
+    public static string NewOpaqueId() => Base64Url(RandomNumberGenerator.GetBytes(32));
+
+    public static string NewState() => NewOpaqueId();
 
     /// <summary>PKCE (RFC 7636) verifier and its S256 challenge.</summary>
     public static (string Verifier, string Challenge) NewPkce()

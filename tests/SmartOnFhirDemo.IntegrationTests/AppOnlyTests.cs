@@ -85,6 +85,54 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         Assert.Contains($"http://{AppFixture.AppHost}/learn", html);
     }
 
+    // ---- Two values name a launch, and neither answers alone ---------------
+
+    [Fact]
+    public async Task A_summary_without_a_session_cookie_resolves_nothing()
+    {
+        // A launch id in a URL is not a bearer token: browser history and Referer headers
+        // are full of URLs, and none of them carry this app's cookie.
+        var html = await app.GetAsync("/summary?id=never-issued");
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Fact]
+    public async Task A_summary_with_a_cookie_but_an_unknown_launch_id_resolves_nothing()
+    {
+        var html = await app.GetAsync(
+            "/summary?id=never-issued",
+            cookie: $"{BrowserSession.CookieName}=a-browser-that-launched-something-else"
+        );
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Fact]
+    public async Task A_cookie_on_its_own_does_not_say_which_launch_is_meant()
+    {
+        var html = await app.GetAsync(
+            "/summary",
+            cookie: $"{BrowserSession.CookieName}=a-browser-that-launched-something-else"
+        );
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Fact]
+    public async Task The_summary_refuses_to_be_stored()
+    {
+        // Unlike the callback it replaced, this URL is stable and can be returned to, so
+        // what a browser or a proxy keeps of a page of patient data is worth saying.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(
+            "/summary?id=never-issued",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
+    }
+
     // ---- The narrated launch fails the same way the plain one does ---------
 
     [Theory]
