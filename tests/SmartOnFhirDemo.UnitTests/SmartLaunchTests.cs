@@ -692,6 +692,42 @@ public class SmartLaunchTests : IDisposable
         Assert.Equal(403, refused.Status);
     }
 
+    [Theory]
+    // What an EHR's answer meant, kept apart from the code it said it with: a reader of
+    // the log asks whether a read happened, not which 4xx an implementation chose.
+    [InlineData(HttpStatusCode.Forbidden, AccessOutcome.Denied)]
+    [InlineData(HttpStatusCode.Unauthorized, AccessOutcome.Denied)]
+    [InlineData(HttpStatusCode.NotFound, AccessOutcome.NotFound)]
+    [InlineData(HttpStatusCode.InternalServerError, AccessOutcome.Failed)]
+    [InlineData(HttpStatusCode.BadGateway, AccessOutcome.Failed)]
+    public async Task What_the_ehr_answered_is_recorded_as_what_it_meant(
+        HttpStatusCode status,
+        string outcome
+    )
+    {
+        var smart = Smart(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
+                : path.Contains("/Patient/") ? Fhir(ForbiddenOutcome, status)
+                : Json(TokenJson);
+        });
+
+        await smart.CompleteAsync(
+            "the-code",
+            "the-state",
+            error: null,
+            errorDescription: null,
+            Session,
+            TestContext.Current.CancellationToken
+        );
+
+        var read = Assert.Single(await RowsAsync(), entry => entry.RequestPath == "Patient/pat-1");
+
+        Assert.Equal(outcome, read.Outcome);
+        Assert.Equal((int)status, read.Status);
+    }
+
     [Fact]
     public async Task Two_launches_sharing_one_pooled_handler_are_still_told_apart()
     {
@@ -850,6 +886,169 @@ public class SmartLaunchTests : IDisposable
 
         Assert.Equal("pat-1", search.PatientId);
         Assert.Equal(AccessOutcome.Ok, search.Outcome);
+    }
+
+    /// <summary>
+    /// One of each shape an Observation's value comes in, plus one with no value at all.
+    /// FHIR makes every one of these legal for a vital sign, and a formatter that handles
+    /// only Quantity renders a blank line against a real server.
+    /// </summary>
+    private const string ObservationBundle = """
+        {"resourceType":"Bundle","type":"searchset","entry":[
+          {"resource":{"resourceType":"Observation","id":"o1","status":"final",
+            "code":{"text":"Body weight"},
+            "valueQuantity":{"value":72.5,"unit":"kg"}}},
+          {"resource":{"resourceType":"Observation","id":"o2","status":"final",
+            "code":{"text":"Heart rate"},
+            "valueQuantity":{"value":68}}},
+          {"resource":{"resourceType":"Observation","id":"o3","status":"final",
+            "code":{"text":"Smoking status"},
+            "valueCodeableConcept":{"text":"Never smoked"}}},
+          {"resource":{"resourceType":"Observation","id":"o4","status":"final",
+            "code":{"text":"Notes"},
+            "valueString":"within normal limits"}},
+          {"resource":{"resourceType":"Observation","id":"o5","status":"final",
+            "code":{"text":"Blood pressure"}}}]}
+        """;
+
+    [Fact]
+    public async Task A_vital_sign_reads_as_its_name_and_whatever_shape_its_value_came_in()
+    {
+        var read = Assert.IsType<ChartOutcome.Read>(
+            await PanelAsync(_ => Fhir(ObservationBundle), ChartPanel.Vitals)
+        );
+
+        Assert.Equal(
+            [
+                "Body weight — 72.5 kg",
+                "Heart rate — 68",
+                "Smoking status — Never smoked",
+                "Notes — within normal limits",
+                // A vital sign the EHR recorded without a value is still a row: saying the
+                // measurement was taken and left blank beats dropping it silently.
+                "Blood pressure",
+            ],
+            read.Entries
+        );
+    }
+
+    /// <summary>
+    /// R4's <c>medication[x]</c> is a choice, and both arms turn up in practice: the
+    /// launcher's sandbox inlines a CodeableConcept, plenty of real servers reference a
+    /// Medication resource instead.
+    /// </summary>
+    private const string MedicationBundle = """
+        {"resourceType":"Bundle","type":"searchset","entry":[
+          {"resource":{"resourceType":"MedicationRequest","id":"m1","status":"active",
+            "intent":"order","subject":{"reference":"Patient/pat-1"},
+            "medicationCodeableConcept":{"text":"Lisinopril 10mg tablet"}}},
+          {"resource":{"resourceType":"MedicationRequest","id":"m2","status":"stopped",
+            "intent":"order","subject":{"reference":"Patient/pat-1"},
+            "medicationReference":{"reference":"Medication/med-1",
+              "display":"Metformin 500mg tablet"}}},
+          {"resource":{"resourceType":"MedicationRequest","id":"m3","status":"completed",
+            "intent":"order","subject":{"reference":"Patient/pat-1"},
+            "medicationReference":{"reference":"Medication/med-2"}}},
+          {"resource":{"resourceType":"MedicationRequest","id":"m4","status":"draft",
+            "intent":"order","subject":{"reference":"Patient/pat-1"}}}]}
+        """;
+
+    [Fact]
+    public async Task A_medication_reads_whether_it_is_named_inline_or_referenced()
+    {
+        var read = Assert.IsType<ChartOutcome.Read>(
+            await PanelAsync(_ => Fhir(MedicationBundle), ChartPanel.Medications)
+        );
+
+        Assert.Equal(
+            [
+                "Lisinopril 10mg tablet — active",
+                "Metformin 500mg tablet — stopped",
+                // A reference with no display is the reference: a link the reader can
+                // follow beats "(unnamed)", and this app does not chase it.
+                "Medication/med-2 — completed",
+                // medication[x] is required in R4, so this resource is invalid — which is
+                // not the same as absent, and servers emit it. The status is still true.
+                "draft",
+            ],
+            read.Entries
+        );
+    }
+
+    [Fact]
+    public async Task A_resource_the_search_did_not_ask_for_still_reads_as_something()
+    {
+        // Servers put things in a searchset that were not searched for — an
+        // OperationOutcome carrying a warning, an _include'd resource. Rendering a blank
+        // line for those would look like data that failed to load.
+        var read = Assert.IsType<ChartOutcome.Read>(
+            await PanelAsync(_ =>
+                Fhir(
+                    """
+                    {"resourceType":"Bundle","type":"searchset","entry":[
+                      {"resource":{"resourceType":"OperationOutcome",
+                        "issue":[{"severity":"warning","code":"too-costly"}]}}]}
+                    """
+                )
+            )
+        );
+
+        Assert.Equal(["OperationOutcome"], read.Entries);
+    }
+
+    [Theory]
+    // No code, but a status: the status is all there is to say.
+    [InlineData(
+        """{"resourceType":"Condition","clinicalStatus":{"coding":[{"code":"active"}]}}""",
+        "active"
+    )]
+    // Neither. A row that says nothing still says one was there.
+    [InlineData("""{"resourceType":"Condition"}""", "(unnamed)")]
+    // No text on the code, so the coding's display; and with no display, the bare code.
+    [InlineData(
+        """{"resourceType":"Condition","code":{"coding":[{"code":"73211009"}]}}""",
+        "73211009"
+    )]
+    public async Task A_condition_the_ehr_barely_described_still_reads_as_a_row(
+        string condition,
+        string expected
+    )
+    {
+        var read = Assert.IsType<ChartOutcome.Read>(
+            await PanelAsync(_ =>
+                Fhir(
+                    $$"""
+                    {"resourceType":"Bundle","type":"searchset",
+                     "entry":[{"resource":{{condition}}}]}
+                    """
+                )
+            )
+        );
+
+        Assert.Equal([expected], read.Entries);
+    }
+
+    [Fact]
+    public async Task An_ehr_that_breaks_on_a_panel_says_so_rather_than_calling_it_refused()
+    {
+        // A 500 is not a scope decision, and telling the reader their access was denied
+        // would send them to argue with the wrong person.
+        var outcome = Assert.IsType<ChartOutcome.Unavailable>(
+            await PanelAsync(_ =>
+                Fhir(
+                    """
+                    {"resourceType":"OperationOutcome","issue":[
+                      {"severity":"error","code":"exception",
+                       "details":{"text":"Index out of range"}}]}
+                    """,
+                    HttpStatusCode.InternalServerError
+                )
+            )
+        );
+
+        Assert.Equal(500, outcome.Status);
+        Assert.Contains("Index out of range", outcome.Reason);
+        Assert.Contains("The EHR returned 500", LaunchMessages.For(outcome));
     }
 
     [Fact]

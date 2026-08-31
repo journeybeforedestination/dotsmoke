@@ -93,6 +93,22 @@ public class LaunchSessionTests
         Assert.IsType<LaunchResolution.Unknown>(cache.Resolve(sid, launchId, patientId, Clock));
     }
 
+    [Fact]
+    public void An_already_expired_token_establishes_no_launch_at_all()
+    {
+        // An EHR can hand back a token that is spent on arrival — a clock skew, or a
+        // launch that sat at a login screen. Keeping the context would only defer the
+        // failure to the first read, and the reader gets the same prompt either way.
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var context = Context("pat-123", lifetime: TimeSpan.Zero);
+
+        cache.RememberLaunch(Browser, context, Rendered("pat-123"), Clock);
+
+        Assert.IsType<LaunchResolution.Unknown>(
+            cache.Resolve(Browser, context.LaunchId, "pat-123", Clock)
+        );
+    }
+
     // ---- The page and the launch disagreeing ------------------------------
 
     [Fact]

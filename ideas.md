@@ -22,7 +22,12 @@ gate), which is done — these are what was deliberately left out of it.
   lesson, and it is the half of this idea the summary's panels did not do: they
   brought the second resource, FHIR search and Bundle handling, but they ask in
   v1 and show nothing about what was actually granted. Launcher supports
-  `permission-v1` and `permission-v2`.
+  `permission-v1` and `permission-v2` — but note what its `scope` simulation
+  actually does, which a test now pins: asked to grant less than the app
+  requested, it refuses the launch at the authorization step and names the scopes
+  it withheld, rather than returning a narrowed token. So the gap cannot be shown
+  on a summary reached through it, and this idea needs either a different EHR or
+  a request the launcher will part-grant.
 
 - **Discovery as a negotiation.** The app reads four fields out of
   `.well-known/smart-configuration` — the two endpoints, plus `issuer` and

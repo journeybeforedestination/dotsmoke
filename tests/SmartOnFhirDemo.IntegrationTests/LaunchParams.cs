@@ -23,7 +23,16 @@ internal static class LaunchParams
     /// <param name="authError">
     /// A launcher error simulation, e.g. "auth_invalid_scope". Empty for a clean launch.
     /// </param>
-    public static string Encode(string patientId, string providerId, string authError = "")
+    /// <param name="grantedScope">
+    /// What the EHR will grant, when that is deliberately less than the app asks for.
+    /// Empty leaves the launcher granting whatever was requested.
+    /// </param>
+    public static string Encode(
+        string patientId,
+        string providerId,
+        string authError = "",
+        string grantedScope = ""
+    )
     {
         object[] fields =
         [
@@ -34,7 +43,7 @@ internal static class LaunchParams
             1, // skip_login  — no login screen, so no browser needed
             1, // skip_auth   — no consent screen either
             0, // sim_ehr
-            "", // scope       — the app asks for its own
+            grantedScope, // scope
             "", // redirect_uris — unregistered, so any is accepted
             "", // client_id
             "", // client_secret

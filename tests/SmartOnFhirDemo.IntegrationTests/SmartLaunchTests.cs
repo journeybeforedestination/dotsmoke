@@ -197,6 +197,32 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.DoesNotContain("would not return", html);
     }
 
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task An_ehr_that_will_not_grant_the_scopes_refuses_the_whole_launch()
+    {
+        // Worth pinning because it is not what you would guess. Asked to grant less than
+        // the app requested, this EHR does not hand back a narrowed token — it refuses at
+        // the authorization step and names every scope it would not give. So a launch
+        // here cannot be used to show a granted-versus-requested gap on the summary: there
+        // is no launch to show it on. See ideas.md, under SMART v2 granular scopes.
+        var launch = LaunchParams.Encode(
+            launcher.PatientId,
+            launcher.ProviderId,
+            grantedScope: "launch openid fhirUser patient/Patient.read"
+        );
+
+        using var client = launcher.CreateChainClient();
+        using var response = await client.GetAsync(
+            $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
+                + $"&launch={Uri.EscapeDataString(launch)}",
+            TestContext.Current.CancellationToken
+        );
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("The EHR refused the authorization request", html);
+        Assert.Contains("patient/Condition.read", html);
+    }
+
     // ---- Failures the launcher can simulate for real ----------------------
 
     [Theory(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]

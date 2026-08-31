@@ -48,6 +48,12 @@ public abstract record ChartOutcome
 {
     private ChartOutcome() { }
 
+    /// <summary>
+    /// Which panel this is about. Declared here so every case has to name one and the view
+    /// can just ask, rather than switching over the hierarchy a second time in markup.
+    /// </summary>
+    public abstract ChartPanel Panel { get; init; }
+
     public sealed record Read(ChartPanel Panel, IReadOnlyList<string> Entries) : ChartOutcome;
 
     /// <summary>The search worked, and this patient has none of these.</summary>

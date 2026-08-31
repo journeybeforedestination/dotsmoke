@@ -272,14 +272,14 @@ dotnet test --no-build --coverage --coverage-settings coverage.config \
 ./.github/coverage.sh                    # merge the two reports, report the rate
 ```
 
-That last line runs both projects, not only the fast one. Twenty-six of the forty-one
+That last line runs both projects, not only the fast one. Twenty-six of the forty-two
 integration tests need no launcher — among them every untrusted-issuer refusal, which is
-the app's central security property — and the fifteen that do skip themselves. The whole
+the app's central security property — and the sixteen that do skip themselves. The whole
 job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the
 container first. Because it runs the whole suite, that job is also where the coverage
-floor lives — currently 93%, against a measured 94.0%. The gap is slack, not laxity:
+floor lives — currently 93%, against a measured 96.8%. The gap is slack, not laxity:
 the job reaches a public sandbox that can be reseeded, and a patient turning up without
 a phone number should not read as a regression. Because those tests skip themselves when `SMART_LAUNCHER_URL`
 answers nothing, a container that failed to start would leave the job green while
