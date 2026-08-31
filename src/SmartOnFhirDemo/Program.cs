@@ -7,6 +7,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
+
+// Named so its handler can be taken from the pool and wrapped per launch by the access
+// log. Nothing else is configured on it yet.
+builder.Services.AddHttpClient(SmartLaunch.FhirClientName);
 builder.Services.AddScoped<SmartLaunch>();
 builder.Services.AddScoped<Jwks>();
 

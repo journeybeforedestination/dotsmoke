@@ -132,7 +132,12 @@ Design decisions about the .NET side rather than about SMART.
 - **The log goes to disk; the credential stays in memory.** The access log is the
   app's own data rather than the EHR's, and the one thing here that outlives the
   process: a SQLite file, one table, created by an EF Core migration at start-up.
-  Nothing a launch carries joins it. The issuer and PKCE verifier survive the
+  Nothing a launch carries joins it. Rows are written by a `DelegatingHandler`
+  wrapped around every FHIR request rather than by the pages, because a read added
+  later cannot forget to audit itself — there is one place requests leave. That
+  handler is constructed per launch and handed its context, never given one to
+  resolve: `IHttpClientFactory` pools handlers across requests, and one holding a
+  "current launch" would file one patient's read under another's. The issuer and PKCE verifier survive the
   redirect in `IMemoryCache` under the OAuth `state` for five minutes — that, and
   the signing keys an EHR publishes, which are cached for an hour under their own
   URL because they are public, identical for every launch, and rotate on the order

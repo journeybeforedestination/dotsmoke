@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -10,8 +11,20 @@ namespace SmartOnFhirDemo.UnitTests;
 /// The launch decisions that a real EHR cannot easily be made to produce. Everything
 /// reachable against a live launcher is covered by the integration tests instead.
 /// </summary>
-public class SmartLaunchTests
+public class SmartLaunchTests : IDisposable
 {
+    /// <summary>
+    /// A real access log on a real SQLite database, so what a launch writes can be read
+    /// back rather than asserted against a fake that agrees with whatever it is told.
+    /// </summary>
+    private readonly AccessLogFixture _accessLog = new();
+
+    public void Dispose()
+    {
+        _accessLog.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
     private const string Iss = "https://ehr.example/r4/fhir";
     private const string RedirectUri = "http://localhost:5000/callback";
 
@@ -430,15 +443,17 @@ public class SmartLaunchTests
         JwksUri = "https://ehr.example/keys",
     };
 
-    private static async Task<CallbackOutcome.Completed> CompleteSso(
+    private async Task<CallbackOutcome.Completed> CompleteSso(
         string tokenJson,
         LaunchState? session = null,
-        string? jwksJson = null
+        string? jwksJson = null,
+        string? patientJson = null
     )
     {
         var smart = Completing(
             tokenJson,
-            jwks: jwksJson ?? TestIdTokens.JwksJson(TestIdTokens.Ehr)
+            jwks: jwksJson ?? TestIdTokens.JwksJson(TestIdTokens.Ehr),
+            patientJson: patientJson
         );
 
         return Assert.IsType<CallbackOutcome.Completed>(
@@ -455,10 +470,10 @@ public class SmartLaunchTests
         );
     }
 
-    private static string TokenJsonWith(string idToken) =>
+    private static string TokenJsonWith(string idToken, string patient = "pat-1") =>
         $$"""
             {"access_token":"the-access-token","token_type":"Bearer","expires_in":3600,
-             "scope":"launch openid fhirUser patient/Patient.read","patient":"pat-1",
+             "scope":"launch openid fhirUser patient/Patient.read","patient":"{{patient}}",
              "id_token":"{{idToken}}"}
             """;
 
@@ -605,6 +620,99 @@ public class SmartLaunchTests
         Assert.Equal("Alex Rivera", completed.Summary.Name);
     }
 
+    // ---- What the launch wrote down ---------------------------------------
+
+    private async Task<IReadOnlyList<AccessLogEntry>> RowsAsync() =>
+        await _accessLog
+            .Db.Entries.AsNoTracking()
+            .OrderBy(entry => entry.Id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+    [Fact]
+    public async Task Reading_a_patient_writes_one_row_naming_that_patient()
+    {
+        await CompleteSso(TokenJsonWith(TestIdTokens.Token()));
+
+        var read = Assert.Single(await RowsAsync(), entry => entry.RequestPath == "Patient/pat-1");
+
+        Assert.Equal("Patient", read.ResourceType);
+        Assert.Equal("pat-1", read.PatientId);
+        Assert.Equal(TestIdTokens.FhirUser, read.FhirUser);
+        Assert.Equal(AccessOutcome.Ok, read.Outcome);
+        Assert.Equal(200, read.Status);
+
+        // The key is the EHR, not the launch: the issuer's path carries the simulation.
+        Assert.Equal(SmartOnFhirDemo.Smart.Origin(Iss), read.IssuerOrigin);
+    }
+
+    [Fact]
+    public async Task Every_request_the_launch_makes_to_the_ehr_is_written_down()
+    {
+        await CompleteSso(TokenJsonWith(TestIdTokens.Token()));
+
+        // Including the two the app makes without being asked to: the version check the
+        // Firely client does first, and the read of whoever fhirUser named. A read the
+        // page never shows is still a read. The query string is kept — with search
+        // coming, what was asked for is not always in the path alone.
+        Assert.Equal(
+            ["Patient/pat-1", "Practitioner/prac-1", "metadata?_summary=true"],
+            (await RowsAsync()).Select(entry => entry.RequestPath).Order(StringComparer.Ordinal)
+        );
+    }
+
+    [Fact]
+    public async Task A_read_the_ehr_refuses_is_written_down_as_refused()
+    {
+        var smart = Smart(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
+                : path.Contains("/Practitioner/") ? Fhir(ForbiddenOutcome, HttpStatusCode.Forbidden)
+                : path.Contains("/Patient/") ? Fhir(PatientJson)
+                : path.EndsWith("/keys", StringComparison.Ordinal)
+                    ? Json(TestIdTokens.JwksJson(TestIdTokens.Ehr))
+                : Json(TokenJsonWith(TestIdTokens.Token()));
+        });
+
+        await smart.CompleteAsync(
+            "the-code",
+            "the-state",
+            error: null,
+            errorDescription: null,
+            SsoSession,
+            TestContext.Current.CancellationToken
+        );
+
+        var refused = Assert.Single(
+            await RowsAsync(),
+            entry => entry.RequestPath == "Practitioner/prac-1"
+        );
+
+        Assert.Equal(AccessOutcome.Denied, refused.Outcome);
+        Assert.Equal(403, refused.Status);
+    }
+
+    [Fact]
+    public async Task Two_launches_sharing_one_pooled_handler_are_still_told_apart()
+    {
+        // The regression this design exists to prevent. StubClientFactory hands out the
+        // same inner handler every time, as the real factory's two-minute pool does; a
+        // handler that resolved "the current launch" from DI rather than being handed one
+        // would file the second launch's read under the first launch's patient.
+        await CompleteSso(TokenJsonWith(TestIdTokens.Token()));
+        await CompleteSso(
+            TokenJsonWith(TestIdTokens.Token(), patient: "pat-2"),
+            patientJson: OtherPatientJson
+        );
+
+        var reads = (await RowsAsync())
+            .Where(entry => entry.ResourceType == "Patient")
+            .Select(entry => (entry.PatientId, entry.RequestPath))
+            .ToList();
+
+        Assert.Equal([("pat-1", "Patient/pat-1"), ("pat-2", "Patient/pat-2")], reads);
+    }
+
     // ---- Fixtures ---------------------------------------------------------
 
     private const string AccessToken = "the-access-token";
@@ -630,14 +738,20 @@ public class SmartLaunchTests
          "name":[{"family":"Rivera","given":["Alex"]}]}
         """;
 
+    private const string OtherPatientJson = """
+        {"resourceType":"Patient","id":"pat-2","gender":"male",
+         "name":[{"family":"Nakamura","given":["Jun"]}]}
+        """;
+
     /// <summary>
     /// A launch that runs all the way through: the token exchange, the version check the
     /// Firely client makes first, and then the patient read.
     /// </summary>
-    private static SmartLaunch Completing(
+    private SmartLaunch Completing(
         string tokenJson,
         Action<HttpRequestMessage>? observe = null,
-        string? jwks = null
+        string? jwks = null,
+        string? patientJson = null
     ) =>
         Smart(request =>
         {
@@ -645,7 +759,7 @@ public class SmartLaunchTests
 
             var path = request.RequestUri!.AbsolutePath;
             return path.EndsWith("/metadata", StringComparison.Ordinal) ? Fhir(CapabilityStatement)
-                : path.Contains("/Patient/") ? Fhir(PatientJson)
+                : path.Contains("/Patient/") ? Fhir(patientJson ?? PatientJson)
                 : path.Contains("/Practitioner/") ? Fhir(PractitionerJson)
                 : path.EndsWith("/keys", StringComparison.Ordinal) ? Json(jwks ?? "{}")
                 : Json(tokenJson);
@@ -661,7 +775,7 @@ public class SmartLaunchTests
         HttpStatusCode status = HttpStatusCode.OK
     ) => new(status) { Content = new StringContent(body, Encoding.UTF8, "application/fhir+json") };
 
-    private static SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond)
+    private SmartLaunch Smart(Func<HttpRequestMessage, HttpResponseMessage> respond)
     {
         // One stub serves discovery, the token endpoint, the JWKS and FHIR alike, so a test
         // decides what the EHR is by what it answers to, not by wiring.
@@ -669,8 +783,10 @@ public class SmartLaunchTests
 
         return new SmartLaunch(
             clients,
+            clients,
             Options.Create(new SmartOptions { TrustedIssuers = [Iss] }),
             new Jwks(clients, new MemoryCache(new MemoryCacheOptions()), NullLogger<Jwks>.Instance),
+            _accessLog.Log,
             TestIdTokens.Clock,
             NullLogger<SmartLaunch>.Instance
         );
@@ -690,8 +806,17 @@ public class SmartLaunchTests
         ) => Task.FromResult(respond(request));
     }
 
-    private sealed class StubClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    /// <summary>
+    /// Hands out the same handler every time, which is what IHttpClientFactory's pooling
+    /// does and what makes the misattribution this design guards against reproducible: two
+    /// launches down one inner handler have to still be told apart.
+    /// </summary>
+    private sealed class StubClientFactory(HttpMessageHandler handler)
+        : IHttpClientFactory,
+            IHttpMessageHandlerFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+
+        public HttpMessageHandler CreateHandler(string name) => handler;
     }
 }

@@ -121,12 +121,21 @@ public sealed record CallbackResult(CallbackOutcome Outcome, LaunchContext? Cont
 /// </summary>
 public sealed partial class SmartLaunch(
     IHttpClientFactory clients,
+    IHttpMessageHandlerFactory handlers,
     IOptions<SmartOptions> options,
     Jwks jwks,
+    AccessLog accessLog,
     TimeProvider clock,
     ILogger<SmartLaunch> log
 )
 {
+    /// <summary>
+    /// The named client every FHIR read goes through. Named so its handler can be taken
+    /// from the factory's pool and wrapped per launch; timeouts, retries and a user-agent
+    /// belong on this registration too, and are their own change.
+    /// </summary>
+    public const string FhirClientName = "fhir";
+
     private SmartOptions Options => options.Value;
 
     [LoggerMessage(
@@ -273,7 +282,11 @@ public sealed partial class SmartLaunch(
 
         var identity = await IdentifyAsync(launch, token, ct);
 
-        return await ReadPatientAsync(launch, token, tokenJson, identity, ct);
+        // Before the read rather than after it: the read is audited against this launch,
+        // and the handler that audits it is handed the context at construction.
+        var context = Established(launch, token, identity.Facts?.FhirUser);
+
+        return await ReadPatientAsync(context, token, tokenJson, identity, ct);
     }
 
     /// <summary>
@@ -325,20 +338,31 @@ public sealed partial class SmartLaunch(
     }
 
     private async Task<CallbackResult> ReadPatientAsync(
-        LaunchState launch,
+        LaunchContext context,
         TokenResponse token,
         string tokenJson,
         (IdTokenFacts? Facts, string? Unavailable) identity,
         CancellationToken ct
     )
     {
-        var iss = launch.Iss;
+        var iss = context.Iss;
         var patientUrl = $"{iss.TrimEnd('/')}/Patient/{token.Patient}";
 
-        var http = clients.CreateClient();
+        // The inner handler comes from the factory's pool; the outer one is built here,
+        // per launch, because it is the only way it can be told which launch it is for.
+        // See AccessLogHandler for why resolving that from DI would be a bug.
+        var audited = new AccessLogHandler(context, accessLog, clock)
+        {
+            InnerHandler = handlers.CreateHandler(FhirClientName),
+        };
+
+        // disposeHandler: false — the inner handler belongs to the pool, and disposing it
+        // would take it down for every other launch sharing it. Firely's documentation is
+        // explicit that an injected HttpClient is the caller's to dispose, so this does.
+        using var http = new HttpClient(audited, disposeHandler: false);
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            token.AccessToken
+            context.AccessToken
         );
 
         using var fhir = new FhirClient(
@@ -358,7 +382,7 @@ public sealed partial class SmartLaunch(
             if (patient is null)
                 return new CallbackOutcome.PatientNotFound(iss, token.Patient!);
 
-            var user = await ReadUserAsync(fhir, iss, identity.Facts?.FhirUser, ct);
+            var user = await ReadUserAsync(fhir, iss, context.FhirUser, ct);
 
             return new CallbackResult(
                 new CallbackOutcome.Completed(
@@ -372,7 +396,7 @@ public sealed partial class SmartLaunch(
                     user.User,
                     user.Unavailable
                 ),
-                Established(launch, token, identity.Facts?.FhirUser)
+                context
             );
         }
         catch (FhirOperationException ex)

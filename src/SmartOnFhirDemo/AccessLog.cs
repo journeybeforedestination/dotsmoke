@@ -44,6 +44,9 @@ public static class AccessOutcome
 
     public const string NotFound = "not-found";
 
+    /// <summary>The EHR answered, and the answer was neither a read nor a refusal.</summary>
+    public const string Failed = "failed";
+
     /// <summary>
     /// The app refused before asking: the page and the launch it resolved to disagreed
     /// about which patient was on screen.
