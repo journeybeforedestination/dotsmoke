@@ -23,29 +23,6 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
   app  render summary; access token discarded
 ```
 
-## The same launch, narrated
-
-`/learn` is the second launch URL. It runs the identical protocol against the identical
-EHR — same trust check, same discovery, same PKCE, same token exchange — but stops where
-the plain launch redirects, and explains what was exchanged before going on.
-
-```
-SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
-  app  discovery, PKCE, authorize URL          ──▶ ① what the EHR sent
-                                                   ② what discovery returned
-                                                   ③ what is about to be sent   [continue]
-  launcher (provider login → patient/consent) ──302──▶ app /learn/callback?code=…&state=…
-  app                                          ──▶ ④ the code, still unspent    [exchange]
-  app ──POST {token}──▶ token used once, discarded, transcript kept
-  app  validate id_token; ──GET {iss}/Patient/{id} and {iss}/{fhirUser}  Bearer
-  app  ──302──▶ /learn/token   ──▶ ⑤ what the token endpoint returned           [continue]
-               /learn/user    ──▶ ⑥ who launched it, and how that was proved   [continue]
-               /learn/patient ──▶ ⑦ the FHIR read, and the summary
-```
-
-Every page carries the seven steps across the top, so you can see where you are
-and how much is left.
-
 ## Running it
 
 ```bash
@@ -77,6 +54,97 @@ To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
 an EHR say who started the launch, and `user/Practitioner.read` is what lets that
 person's name be read; drop either and the launch still works, and the summary simply
 says nobody was named.
+
+## The same launch, narrated
+
+`/learn` is the second launch URL. It runs the identical protocol against the identical
+EHR — same trust check, same discovery, same PKCE, same token exchange — but stops where
+the plain launch redirects, and explains what was exchanged before going on.
+
+```
+SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
+  app  discovery, PKCE, authorize URL          ──▶ ① what the EHR sent
+                                                   ② what discovery returned
+                                                   ③ what is about to be sent   [continue]
+  launcher (provider login → patient/consent) ──302──▶ app /learn/callback?code=…&state=…
+  app                                          ──▶ ④ the code, still unspent    [exchange]
+  app ──POST {token}──▶ token used once, discarded, transcript kept
+  app  validate id_token; ──GET {iss}/Patient/{id} and {iss}/{fhirUser}  Bearer
+  app  ──302──▶ /learn/token   ──▶ ⑤ what the token endpoint returned           [continue]
+               /learn/user    ──▶ ⑥ who launched it, and how that was proved   [continue]
+               /learn/patient ──▶ ⑦ the FHIR read, and the summary
+```
+
+Every page carries the seven steps across the top, so you can see where you are
+and how much is left.
+
+## What SMART demands
+
+The four things the protocol makes an app responsible for, and what this one does
+about each. `/learn` shows all four happening.
+
+- **The issuer is checked against an allowlist.** `iss` arrives as a query
+  parameter and everything downstream trusts it: the app fetches that host's
+  configuration, sends the user to the authorization endpoint it names, and posts
+  the authorization code to its token endpoint. Unchecked, that is a server-side
+  request forgery, an open redirect, and a way to harvest codes. `TrustedIssuers`
+  lists the EHRs a launch may come from, compared by origin because a SMART issuer
+  legitimately carries a path. An empty list trusts nobody.
+- **The id_token is validated, though it need not be.** OIDC Core 3.1.3.7 lets an
+  app skip signature validation when the token arrives over a direct TLS connection
+  to the token endpoint, which is exactly how it arrives here. This app checks the
+  signature against the EHR's published keys anyway, along with `iss`, `aud` and
+  expiry, because the keys are one cached fetch away and an app that only checks
+  when it must is one deployment change away from not checking when it should. The
+  rules live in `IdToken` as a pure function of the token, the keys and the clock;
+  fetching and caching the keys is `Jwks`, kept separate.
+- **A fhirUser pointing elsewhere is not followed.** The reference is read relative to
+  the launch's own FHIR server, or absolute if it names that same origin. An absolute
+  reference to another origin is refused, because following it would send this
+  launch's access token to a server the token was never issued for.
+- **Identity degrades, it does not fail.** No `openid` grant, no published
+  `jwks_uri`, unreachable keys, or a token that fails validation each leave the
+  launch standing with a sentence saying why nobody is named. The app's job is the
+  patient summary, and it should not be lost to an absent name.
+
+## How this code is arranged
+
+Design decisions about the .NET side rather than about SMART.
+
+- **The protocol is separate from the web layer.** `SmartLaunch` does discovery,
+  the authorization request, the token exchange and the patient read, returning a
+  closed set of outcomes; `/launch` and the callback page map those onto responses.
+  That separation is what lets the launch be tested without a web host.
+- **The OAuth handshake is hand-rolled** over `HttpClient`. SMART reveals the
+  issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
+  around a static `Authority` — fights.
+- **Nothing is persisted.** Only the issuer and PKCE verifier survive the
+  redirect, held in `IMemoryCache` under the OAuth `state` for five minutes — that,
+  and the signing keys an EHR publishes, which are cached for an hour under their
+  own URL because they are public, identical for every launch, and rotate on the
+  order of months. The
+  access token is used once and discarded, so `/callback` renders in the same
+  request that exchanges the code — and so does `/learn`'s exchange, which is why
+  its later steps read a transcript rather than resume a live launch. That
+  transcript is the one thing the narrated launch adds to the cache: no credential,
+  but patient data, so it expires on the same five minutes and every `/learn` page
+  sends `Cache-Control: no-store`.
+- **The launching user is projected off the base resource.** `fhirUser` may name a
+  Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
+  `identifier` with FHIRPath against `Resource` — which handles all four in less code
+  than handling one would take alone. It keeps a name's `prefix`, because "Dr.
+  Albertine Orn" is most of how a clinician is addressed.
+- **Credentials are removed where they arrive, not where they render.**
+  `SmartLaunch` redacts the token response and projects it into `TokenFacts` before
+  returning; the access token is not a field on any outcome. A page cannot leak what
+  it was never handed, which beats a page that remembers not to print it.
+- **The explanation is a pure projection.** `LaunchTranscript` turns outcomes into
+  ordered steps with their fields, payloads and prose. It does no I/O and reaches
+  nothing but what it is given, so the narrated launch is readable and reviewable in
+  one file, and the pages stay markup.
+- **Firely does the FHIR work**, not just the HTTP call: FHIRPath for element
+  selection, `EnumUtility` for coded display text, `Date` for partial birth
+  dates, `OperationOutcome` for server errors.
 
 ## Tests
 
@@ -253,66 +321,6 @@ analyzers and the same packages.
 Adding or upgrading a package rewrites the lock file during `dotnet restore` —
 commit it with the change. CI restores with `--locked-mode`, which fails rather
 than quietly resolving something new.
-
-## Design notes
-
-- **The issuer is checked against an allowlist.** `iss` arrives as a query
-  parameter and everything downstream trusts it: the app fetches that host's
-  configuration, sends the user to the authorization endpoint it names, and posts
-  the authorization code to its token endpoint. Unchecked, that is a server-side
-  request forgery, an open redirect, and a way to harvest codes. `TrustedIssuers`
-  lists the EHRs a launch may come from, compared by origin because a SMART issuer
-  legitimately carries a path. An empty list trusts nobody.
-- **The protocol is separate from the web layer.** `SmartLaunch` does discovery,
-  the authorization request, the token exchange and the patient read, returning a
-  closed set of outcomes; `/launch` and the callback page map those onto responses.
-  That separation is what lets the launch be tested without a web host.
-- **The OAuth handshake is hand-rolled** over `HttpClient`. SMART reveals the
-  issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
-  around a static `Authority` — fights.
-- **Nothing is persisted.** Only the issuer and PKCE verifier survive the
-  redirect, held in `IMemoryCache` under the OAuth `state` for five minutes — that,
-  and the signing keys an EHR publishes, which are cached for an hour under their
-  own URL because they are public, identical for every launch, and rotate on the
-  order of months. The
-  access token is used once and discarded, so `/callback` renders in the same
-  request that exchanges the code — and so does `/learn`'s exchange, which is why
-  its later steps read a transcript rather than resume a live launch. That
-  transcript is the one thing the narrated launch adds to the cache: no credential,
-  but patient data, so it expires on the same five minutes and every `/learn` page
-  sends `Cache-Control: no-store`.
-- **The id_token is validated, though it need not be.** OIDC Core 3.1.3.7 lets an
-  app skip signature validation when the token arrives over a direct TLS connection
-  to the token endpoint, which is exactly how it arrives here. This app checks the
-  signature against the EHR's published keys anyway, along with `iss`, `aud` and
-  expiry, because the keys are one cached fetch away and an app that only checks
-  when it must is one deployment change away from not checking when it should. The
-  rules live in `IdToken` as a pure function of the token, the keys and the clock;
-  fetching and caching the keys is `Jwks`, kept separate.
-- **The launching user is projected off the base resource.** `fhirUser` may name a
-  Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
-  `identifier` with FHIRPath against `Resource` — which handles all four in less code
-  than handling one would take alone. It keeps a name's `prefix`, because "Dr.
-  Albertine Orn" is most of how a clinician is addressed.
-- **A fhirUser pointing elsewhere is not followed.** The reference is read relative to
-  the launch's own FHIR server, or absolute if it names that same origin. An absolute
-  reference to another origin is refused, because following it would send this
-  launch's access token to a server the token was never issued for.
-- **Identity degrades, it does not fail.** No `openid` grant, no published
-  `jwks_uri`, unreachable keys, or a token that fails validation each leave the
-  launch standing with a sentence saying why nobody is named. The app's job is the
-  patient summary, and it should not be lost to an absent name.
-- **Credentials are removed where they arrive, not where they render.**
-  `SmartLaunch` redacts the token response and projects it into `TokenFacts` before
-  returning; the access token is not a field on any outcome. A page cannot leak what
-  it was never handed, which beats a page that remembers not to print it.
-- **The explanation is a pure projection.** `LaunchTranscript` turns outcomes into
-  ordered steps with their fields, payloads and prose. It does no I/O and reaches
-  nothing but what it is given, so the narrated launch is readable and reviewable in
-  one file, and the pages stay markup.
-- **Firely does the FHIR work**, not just the HTTP call: FHIRPath for element
-  selection, `EnumUtility` for coded display text, `Date` for partial birth
-  dates, `OperationOutcome` for server errors.
 
 ## Dependencies
 
