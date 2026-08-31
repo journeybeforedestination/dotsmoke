@@ -16,12 +16,12 @@ gate), which is done — these are what was deliberately left out of it.
   over launch type, a real abstraction rather than a bolted-on feature. The
   launcher supports it (`launch-standalone`). Biggest remaining conceptual gap.
 
-- **SMART v2 granular scopes, and a second resource.** Move from
-  `patient/Patient.read` to v2 syntax (`patient/Patient.rs`), deliberately ask
-  for more than will be granted so the requested-vs-granted gap is visible on
-  screen, and read `Observation?category=vital-signs` to show the token
-  authorises a class of data rather than one URL. Also exercises FHIR search and
-  Bundle handling in Firely, neither of which the app touches. Launcher supports
+- **SMART v2 granular scopes.** Move from `patient/Condition.read` to v2 syntax
+  (`patient/Condition.rs`), and deliberately ask for more than will be granted so
+  the requested-versus-granted gap is visible on screen. That gap is the whole
+  lesson, and it is the half of this idea the summary's panels did not do: they
+  brought the second resource, FHIR search and Bundle handling, but they ask in
+  v1 and show nothing about what was actually granted. Launcher supports
   `permission-v1` and `permission-v2`.
 
 - **Discovery as a negotiation.** The app reads four fields out of
@@ -41,10 +41,13 @@ gate), which is done — these are what was deliberately left out of it.
   `UntrustedIssuer` already behaves. The launcher cannot easily be made to emit a
   bad id_token, so the failure path would be unit-tested only.
 
-- **Refresh tokens and `offline_access`.** Tension worth noting rather than
-  resolving: "Nothing is persisted" is a settled design property, and a refresh
-  token is a stored credential. Could be taught as explanation only — a step
-  saying what `offline_access` would change and why this app does not ask for it.
+- **Refresh tokens and `offline_access`.** The access log took "nothing is
+  persisted" off the table, but the property that replaced it — the log goes to
+  disk, the credential stays in memory — is the one a refresh token breaks, and
+  it is the sharper of the two. Needs an app whose users come back, so the access
+  token expiring is still handled as a re-launch prompt. Could be taught as
+  explanation only: a step saying what `offline_access` would change, and why
+  this app does not ask for it.
 
 - **Confidential clients — `private_key_jwt`.** Asymmetric client authentication,
   and from there SMART Backend Services (client credentials, no user). A whole
@@ -63,10 +66,11 @@ gate), which is done — these are what was deliberately left out of it.
   technique, and this app is close to the ideal case for it. No dependencies,
   small.
 
-- **Typed clients and resilience.** All four HTTP calls — discovery, the token
-  exchange, the JWKS fetch and the FHIR reads — go through an untyped
-  `clients.CreateClient()`: default 100-second timeout, no retry, no user-agent
-  identifying the app to the EHR. Named clients with real timeouts, plus
+- **Typed clients and resilience.** The FHIR reads now go through a named client,
+  because the access log has to wrap its handler — but naming it was all that
+  bought. It and the other three calls — discovery, the token exchange, the JWKS
+  fetch — still take the default 100-second timeout, no retry, and no user-agent
+  identifying the app to the EHR. Real timeouts on each, plus
   `Microsoft.Extensions.Http.Resilience`. Directly relevant given the nightly job
   depends on a 2019-vintage public sandbox with no SLA.
 
