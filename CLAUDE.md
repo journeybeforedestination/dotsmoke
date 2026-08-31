@@ -37,4 +37,12 @@ When a change makes a README statement false, fix it in the same commit.
 comment: it fails as `MSB4181 ... returned false but did not log an error`,
 naming neither the file nor the cause.
 
+`IHttpClientFactory` pools message handlers for two minutes and gives each its
+own DI scope, one that is not the request's and outlives it. Anything
+per-request cached inside a handler is therefore served to later, unrelated
+requests — for the access log that means attributing one patient's read to
+another launch, silently and with nothing in the log saying so.
+`AccessLogHandler` takes its launch as a constructor argument for exactly this
+reason, and is built at the call site rather than registered.
+
 Comments here say *why*, not *what*. Test names are sentences.

@@ -1,5 +1,5 @@
-@page "/callback"
-@model CallbackModel
+@page "/summary"
+@model SummaryModel
 @{
     ViewData["Title"] = "Patient summary";
 }
@@ -7,6 +7,8 @@
 <p class="aside">@Model.WhoLaunchedIt</p>
 
 <partial name="_Summary" model="Model.Summary" />
+
+<partial name="_Chart" model="Model.Chart" />
 
 <details>
     <summary>Raw Patient resource</summary>

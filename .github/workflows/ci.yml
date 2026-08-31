@@ -48,8 +48,17 @@ jobs:
       - name: Build
         run: dotnet build --no-restore -warnaserror
 
-      # Both projects. Twenty-two of the integration tests need no launcher — among
-      # them every untrusted-issuer refusal — and the eleven that do skip themselves.
+      # A model edited without `dotnet ef migrations add` would be green here for the
+      # wrong reason: the app migrates at start-up, so it starts cleanly against a schema
+      # that is missing the change and fails at the first query instead. This exits
+      # non-zero when the two have drifted apart.
+      - name: Check the migrations still match the model
+        run: >
+          dotnet ef migrations has-pending-model-changes
+          --project src/SmartOnFhirDemo --no-build
+
+      # Both projects. Twenty-seven of the integration tests need no launcher — among
+      # them every untrusted-issuer refusal — and the nineteen that do skip themselves.
       - name: Test
         run: >
           dotnet test --no-build
@@ -122,6 +131,6 @@ jobs:
       # at it: this job reaches a public sandbox that can be reseeded, and a patient
       # arriving without a phone number should not read as a regression.
       #
-      # Measured 95.0% on 2026-08-30. Raise this when it has comfortably moved up.
+      # Measured 97.2% on 2026-08-31. Raise this when it has comfortably moved up.
       - name: Report coverage
         run: ./.github/coverage.sh 93

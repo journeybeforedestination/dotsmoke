@@ -23,6 +23,17 @@ public class LaunchTranscriptTests
 
     private const string AccessToken = "access-token-THIS-MUST-NEVER-APPEAR-EITHER";
 
+    private const string LaunchId = "launch-id-0123456789-abcdefghij-klmnopqrst-uvwxyz";
+
+    /// <summary>An established launch as the transcript is allowed to see one: no token on it.</summary>
+    private static readonly LaunchFacts Facts = new(
+        LaunchId,
+        "https://ehr.example:443",
+        "pat-1",
+        "Practitioner/prac-1",
+        new DateTimeOffset(2026, 8, 31, 13, 0, 0, TimeSpan.Zero)
+    );
+
     // ---- On the way out ---------------------------------------------------
 
     [Fact]
@@ -266,21 +277,45 @@ public class LaunchTranscriptTests
     }
 
     [Fact]
-    public void The_patient_read_is_the_seventh_step_now_that_identity_is_the_sixth()
+    public void The_session_step_sits_between_the_token_and_the_identity()
     {
-        Assert.Equal(6, LaunchTranscript.WhoLaunchedThis(Identified()).Number);
-        Assert.Equal(7, LaunchTranscript.ThePatientRead(Identified()).Number);
+        // Where it belongs chronologically: the credential arriving is what forces the
+        // question of where it may live, and the reads after it depend on the answer.
+        Assert.Equal(5, LaunchTranscript.TheTokenResponse(Completed()).Number);
+        Assert.Equal(6, LaunchTranscript.TheSessionItStarts(Facts).Number);
+        Assert.Equal(7, LaunchTranscript.WhoLaunchedThis(Identified()).Number);
+        Assert.Equal(8, LaunchTranscript.ThePatientRead(Identified()).Number);
+    }
+
+    [Fact]
+    public void The_session_step_shows_what_names_a_launch_and_not_the_credential_it_holds()
+    {
+        var step = LaunchTranscript.TheSessionItStarts(Facts);
+        var rendered = string.Join(
+            " ",
+            step.Fields.Select(f => $"{f.Label} {f.Value} {f.Note}").Append(step.Payload)
+        );
+
+        // The launch id and the patient are what the URL carries, so they are shown.
+        Assert.Contains("pat-1", rendered, StringComparison.Ordinal);
+        Assert.Contains(LaunchId[..8], rendered, StringComparison.Ordinal);
+
+        // The cookie is not, and neither is the token. The step cannot leak either,
+        // because LaunchFacts is all it was handed.
+        Assert.Contains(Smart.Withheld, rendered, StringComparison.Ordinal);
+        Assert.DoesNotContain(AccessToken, rendered, StringComparison.Ordinal);
     }
 
     [Fact]
     public void Every_step_has_a_label_for_the_progress_row()
     {
-        // The row numbers seven chips whatever the steps say, so a step whose number
+        // The row draws one chip per label whatever the steps say, so a step whose number
         // outran the labels would render an unnamed one.
         var numbers = Steps(Prepared())
             .Select(s => s.Number)
             .Append(LaunchTranscript.TheCodeCameBack(Code, State, Session).Number)
             .Append(LaunchTranscript.TheTokenResponse(Completed()).Number)
+            .Append(LaunchTranscript.TheSessionItStarts(Facts).Number)
             .Append(LaunchTranscript.WhoLaunchedThis(Identified()).Number)
             .Append(LaunchTranscript.ThePatientRead(Completed()).Number)
             .ToList();
@@ -295,6 +330,7 @@ public class LaunchTranscriptTests
         // that page exists to make the PKCE point, which does not survive a clause.
         var notes = Steps(Prepared())
             .Concat([LaunchTranscript.TheTokenResponse(Completed())])
+            .Concat([LaunchTranscript.TheSessionItStarts(Facts)])
             .Concat([LaunchTranscript.WhoLaunchedThis(Identified())])
             .Concat([LaunchTranscript.ThePatientRead(Completed())])
             .SelectMany(s => s.Fields);

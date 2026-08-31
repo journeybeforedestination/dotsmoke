@@ -1,7 +1,7 @@
 @page "/learn/user"
 @model SmartOnFhirDemo.Pages.Learn.UserModel
 @{
-    ViewData["Title"] = "Who launched it";
+    ViewData["Title"] = "Who launched this";
 }
 
 <partial name="_Progress" model="new[] { Model.Step.Number }" />
@@ -9,5 +9,6 @@
 <partial name="_Step" model="Model.Step" />
 
 <p class="next">
-    <a class="button" asp-page="/Learn/Patient" asp-route-state="@Model.State">Read the patient &rarr;</a>
+    <a class="button" asp-page="/Learn/Patient"
+       asp-route-id="@Model.LaunchId" asp-route-patient="@Model.PatientId">The patient read &rarr;</a>
 </p>

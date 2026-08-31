@@ -15,8 +15,10 @@ dotnet dotnet-coverage merge \
   --output-format cobertura \
   TestResults/*.cobertura.xml
 
-# The rate is the first attribute of the root <coverage> element.
-rate=$(grep -o 'line-rate="[0-9.]*"' TestResults/merged.cobertura.xml | head -1 | cut -d'"' -f2)
+# The rate is the first attribute of the root <coverage> element. -m1 rather than
+# `| head -1`: head closing the pipe kills grep with SIGPIPE, and under pipefail that
+# fails the whole step — intermittently, and only once the report is big enough.
+rate=$(grep -m1 -o 'line-rate="[0-9.]*"' TestResults/merged.cobertura.xml | cut -d'"' -f2)
 percent=$(awk -v r="$rate" 'BEGIN { printf "%.1f", r * 100 }')
 
 echo "Line coverage: ${percent}%"

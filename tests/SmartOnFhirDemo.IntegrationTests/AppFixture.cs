@@ -19,10 +19,22 @@ public class AppFixture : IAsyncDisposable
     /// </summary>
     public const string UnreachableIssuer = "http://127.0.0.1:1";
 
-    private readonly WebApplicationFactory<Program> _app =
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+    /// <summary>
+    /// This fixture's own access log. The app migrates its database at start-up, so
+    /// without this every test run would leave an app.db in the test output and share
+    /// it with the next one.
+    /// </summary>
+    private readonly string _database = Path.Combine(
+        Path.GetTempPath(),
+        $"dotsmoke-{Guid.NewGuid():N}.db"
+    );
+
+    private readonly WebApplicationFactory<Program> _app;
+
+    public AppFixture() =>
+        _app = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration(
-                (_, config) => config.AddInMemoryCollection(TrustedIssuers())
+                (_, config) => config.AddInMemoryCollection(Settings())
             )
         );
 
@@ -30,12 +42,14 @@ public class AppFixture : IAsyncDisposable
     /// Replaces the shipped allowlist so the tests launch against their own servers.
     /// Overriding index 0 also proves the app reads the list from configuration.
     /// </summary>
-    private static IEnumerable<KeyValuePair<string, string?>> TrustedIssuers()
+    private IEnumerable<KeyValuePair<string, string?>> Settings()
     {
         yield return new("Smart:TrustedIssuers:0", UnreachableIssuer);
 
         if (Launcher.Url is { } launcher)
             yield return new("Smart:TrustedIssuers:1", launcher);
+
+        yield return new("ConnectionStrings:AccessLog", $"Data Source={_database}");
     }
 
     /// <summary>
@@ -55,16 +69,31 @@ public class AppFixture : IAsyncDisposable
     public HttpClient CreateDirectClient() =>
         new(_app.Server.CreateHandler()) { BaseAddress = new Uri($"http://{AppHost}") };
 
-    public async Task<string> GetAsync(string url)
+    /// <param name="cookie">
+    /// What the browser is claiming to be. There is no cookie container here on purpose:
+    /// a test that wants to be a particular browser says so.
+    /// </param>
+    public async Task<string> GetAsync(string url, string? cookie = null)
     {
         using var client = CreateChainClient();
-        using var response = await client.GetAsync(url);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+        if (cookie is not null)
+            request.Headers.Add("Cookie", cookie);
+
+        using var response = await client.SendAsync(request);
         return await response.Content.ReadAsStringAsync();
     }
 
     public virtual async ValueTask DisposeAsync()
     {
         await _app.DisposeAsync();
+
+        // SQLite opens two journals beside the database, and leaving those behind is
+        // how a temporary directory quietly fills up.
+        foreach (var suffix in new[] { "", "-shm", "-wal" })
+            File.Delete(_database + suffix);
+
         GC.SuppressFinalize(this);
     }
 }

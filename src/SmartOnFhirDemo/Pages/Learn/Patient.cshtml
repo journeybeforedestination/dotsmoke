@@ -17,10 +17,26 @@
     <partial name="_Summary" model="Model.Summary" />
 </section>
 
+<section class="step">
+    <h2>Reading on, now that the launch is still open</h2>
+    <p>
+        Everything above happened during the handshake. These happen now: press one and the
+        app makes a fresh request with the same token, because step ⑥ kept it. Each is a
+        <em>search</em> rather than a read by id — <code>Condition?patient={id}</code>, not
+        <code>Condition/{id}</code> — which is the shape a <code>patient/Condition.read</code>
+        scope actually authorises: a class of data about one patient, not one URL. Every one
+        of them writes a row to the access log, exactly as the two reads above did.
+    </p>
+</section>
+
+<partial name="_Chart" model="Model.Chart" />
+
 <p class="next"><a href="/">&larr; Back to the start</a></p>
 
 <p class="aside">
-    Nothing above is kept. The access token was used once, in the request on this page,
-    and discarded. What made this walkthrough readable is a redacted account of the launch,
-    held in memory for five minutes and then gone — along with the patient data on this page.
+    The access token is still here, held against your browser as step ⑥ described, and it
+    goes when the EHR said it would. Nothing on this page is written down: the account that
+    made the walkthrough readable never held the credential, and both are in memory only.
+    The one thing that does reach disk is the access log — a row per request the app made
+    to the EHR, and none of them carrying what was read.
 </p>

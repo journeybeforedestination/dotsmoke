@@ -1,6 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="Hl7.Fhir.R4" Version="6.4.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
+
+    <!-- What `dotnet ef migrations add` needs to build a model at design time. It ships
+         in nothing: PrivateAssets keeps it out of the output and out of any consumer. -->
+    <PackageReference
+      Include="Microsoft.EntityFrameworkCore.Design"
+      Version="10.0.11"
+      PrivateAssets="all"
+    />
   </ItemGroup>
 </Project>

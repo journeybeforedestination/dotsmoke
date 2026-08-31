@@ -1,10 +1,8 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Hl7.Fhir.Serialization;
-using Hl7.Fhir.Utility;
 using Microsoft.Extensions.Options;
 
 namespace SmartOnFhirDemo;
@@ -96,6 +94,24 @@ public abstract record CallbackOutcome
 }
 
 /// <summary>
+/// How the callback step ended, and — only when it ended in a launch — the live context
+/// that launch established.
+///
+/// The context is a second return rather than a field on
+/// <see cref="CallbackOutcome.Completed"/> so that the outcome stays credential-free. The
+/// narrated launch caches and renders that outcome; a token on it would be a token in the
+/// cache under a transcript, and on a page.
+/// </summary>
+public sealed record CallbackResult(CallbackOutcome Outcome, LaunchContext? Context = null)
+{
+    /// <summary>Every way a callback ends short of a launch, which is most of them.</summary>
+    public static implicit operator CallbackResult(CallbackOutcome outcome) => new(outcome);
+
+    /// <summary>The named alternative to the conversion above.</summary>
+    public static CallbackResult From(CallbackOutcome outcome) => new(outcome);
+}
+
+/// <summary>
 /// The SMART EHR launch itself: discovery and the authorization request on the way
 /// out, the token exchange and patient read on the way back. It knows nothing about
 /// ASP.NET — callers decide how to present each outcome, and where to keep the launch
@@ -103,6 +119,7 @@ public abstract record CallbackOutcome
 /// </summary>
 public sealed partial class SmartLaunch(
     IHttpClientFactory clients,
+    FhirClients fhirClients,
     IOptions<SmartOptions> options,
     Jwks jwks,
     TimeProvider clock,
@@ -198,7 +215,7 @@ public sealed partial class SmartLaunch(
     /// at. The token is used once and never leaves this method.
     /// </summary>
     /// <param name="launch">The launch this callback belongs to, or null if none is in flight.</param>
-    public async Task<CallbackOutcome> CompleteAsync(
+    public async Task<CallbackResult> CompleteAsync(
         string? code,
         string? state,
         string? error,
@@ -255,7 +272,11 @@ public sealed partial class SmartLaunch(
 
         var identity = await IdentifyAsync(launch, token, ct);
 
-        return await ReadPatientAsync(launch.Iss, token, tokenJson, identity, ct);
+        // Before the read rather than after it: the read is audited against this launch,
+        // and the handler that audits it is handed the context at construction.
+        var context = Established(launch, token, identity.Facts?.FhirUser);
+
+        return await ReadPatientAsync(context, token, tokenJson, identity, ct);
     }
 
     /// <summary>
@@ -306,31 +327,22 @@ public sealed partial class SmartLaunch(
         };
     }
 
-    private async Task<CallbackOutcome> ReadPatientAsync(
-        string iss,
+    private async Task<CallbackResult> ReadPatientAsync(
+        LaunchContext context,
         TokenResponse token,
         string tokenJson,
         (IdTokenFacts? Facts, string? Unavailable) identity,
         CancellationToken ct
     )
     {
+        var iss = context.Iss;
         var patientUrl = $"{iss.TrimEnd('/')}/Patient/{token.Patient}";
 
-        var http = clients.CreateClient();
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer",
-            token.AccessToken
-        );
-
-        using var fhir = new FhirClient(
-            iss,
-            http,
-            new FhirClientSettings
-            {
-                PreferredFormat = ResourceFormat.Json,
-                VerifyFhirVersion = true,
-            }
-        );
+        // The one read that asks the server what it is first: nothing is known about it
+        // yet, and a launch against a server that is not R4 should say so rather than fail
+        // on the first field that is missing.
+        using var client = fhirClients.Open(context, verifyVersion: true);
+        var fhir = client.Fhir;
 
         try
         {
@@ -339,18 +351,21 @@ public sealed partial class SmartLaunch(
             if (patient is null)
                 return new CallbackOutcome.PatientNotFound(iss, token.Patient!);
 
-            var user = await ReadUserAsync(fhir, iss, identity.Facts?.FhirUser, ct);
+            var user = await ReadUserAsync(fhir, iss, context.FhirUser, ct);
 
-            return new CallbackOutcome.Completed(
-                PatientSummary.From(patient),
-                patient.ToJson(pretty: true),
-                TokenFacts.From(token),
-                tokenJson,
-                patientUrl,
-                identity.Facts,
-                identity.Unavailable,
-                user.User,
-                user.Unavailable
+            return new CallbackResult(
+                new CallbackOutcome.Completed(
+                    PatientSummary.From(patient),
+                    patient.ToJson(pretty: true),
+                    TokenFacts.From(token),
+                    tokenJson,
+                    patientUrl,
+                    identity.Facts,
+                    identity.Unavailable,
+                    user.User,
+                    user.Unavailable
+                ),
+                context
             );
         }
         catch (FhirOperationException ex)
@@ -358,7 +373,7 @@ public sealed partial class SmartLaunch(
             LogPatientReadFailed(ex, token.Patient);
             return new CallbackOutcome.PatientReadFailed(
                 (int)ex.Status,
-                Describe(ex.Outcome) ?? ex.Message
+                LaunchMessages.Describe(ex.Outcome) ?? ex.Message
             );
         }
         catch (NotSupportedException ex)
@@ -367,6 +382,31 @@ public sealed partial class SmartLaunch(
             return new CallbackOutcome.IncompatibleFhirVersion(iss, ex.Message);
         }
     }
+
+    /// <summary>
+    /// The launch, as everything after the callback will need it. This is where the access
+    /// token stops being a local and starts being state, so it is also where the app takes
+    /// on the obligation to say when it stops being good for anything.
+    /// </summary>
+    private LaunchContext Established(LaunchState launch, TokenResponse token, string? fhirUser) =>
+        new(
+            Smart.NewOpaqueId(),
+            launch.Iss,
+            // Non-null: a launch that reached here passed the trust check, which refuses
+            // anything that is not an absolute http(s) URL.
+            Smart.Origin(launch.Iss)!,
+            token.Patient!,
+            fhirUser,
+            // An EHR that does not say falls back to the cache's own five minutes, which
+            // is short enough to be honest about how little the app was told.
+            clock.GetUtcNow()
+                + (
+                    token.ExpiresIn is { } seconds
+                        ? TimeSpan.FromSeconds(seconds)
+                        : LaunchCache.Lifetime
+                ),
+            token.AccessToken
+        );
 
     /// <summary>
     /// Reads whoever <c>fhirUser</c> named, on the same authenticated client the patient
@@ -422,12 +462,4 @@ public sealed partial class SmartLaunch(
         !Uri.IsWellFormedUriString(fhirUser, UriKind.Absolute) ? fhirUser
         : Smart.SameOrigin(iss, fhirUser) ? fhirUser
         : null;
-
-    private static string? Describe(OperationOutcome? outcome) =>
-        outcome?.Issue is { Count: > 0 } issues
-            ? string.Join(
-                "; ",
-                issues.Select(i => i.Details?.Text ?? i.Diagnostics ?? i.Code.GetLiteral())
-            )
-            : null;
 }

@@ -1,0 +1,36 @@
+@*
+    The panels, on whichever page is offering them. A link each rather than any
+    JavaScript: the app has no script at all, and a link is enough for a page that
+    reloads to show one more thing.
+*@
+@model ChartView
+
+<nav class="next">
+    @foreach (var panel in ChartPanel.All)
+    {
+        <a class="button" href="@Model.Link(panel)">@panel.Title</a>
+    }
+</nav>
+
+@if (Model.Shown is { } shown)
+{
+    <section class="step">
+        <h2>@shown.Panel.Title</h2>
+
+        @if (shown is ChartOutcome.Read read)
+        {
+            <ul>
+                @foreach (var entry in read.Entries)
+                {
+                    <li>@entry</li>
+                }
+            </ul>
+        }
+        else
+        {
+            @* A sentence, never an empty list: "none recorded" and "the EHR would not
+               say" look identical as nothing, and mean opposite things. *@
+            <p class="note">@LaunchMessages.For(shown)</p>
+        }
+    </section>
+}

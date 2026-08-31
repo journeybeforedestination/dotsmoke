@@ -15,11 +15,16 @@ public sealed class SmartOptions
     /// <summary>
     /// What the app asks the EHR for. <c>openid fhirUser</c> is what makes the EHR
     /// return an id_token naming the user who started the launch; <c>user/Practitioner.read</c>
-    /// is what lets that name be read. Both are asked for narrowly rather than as
+    /// is what lets that name be read. The three <c>patient/</c> scopes after them are the
+    /// summary's follow-up panels. All of them are asked for narrowly rather than as
     /// <c>user/*.read</c>, because this app only handles a provider EHR launch.
+    ///
+    /// v1 syntax. Moving to v2 (<c>patient/Condition.rs</c>) is a lesson about showing the
+    /// gap between what was requested and what was granted, and deserves its own change.
     /// </summary>
     public string Scopes { get; set; } =
-        "launch openid fhirUser patient/Patient.read user/Practitioner.read";
+        "launch openid fhirUser patient/Patient.read user/Practitioner.read "
+        + "patient/Condition.read patient/Observation.read patient/MedicationRequest.read";
 
     /// <summary>
     /// The EHRs this app will accept a launch from. A real app is registered with each
@@ -138,8 +143,13 @@ public static class Smart
         && Origin(other) is { } candidate
         && string.Equals(origin, candidate, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Scheme, host and port of an absolute http(s) URL, or null if it is neither.</summary>
-    private static string? Origin(string? url) =>
+    /// <summary>
+    /// Scheme, host and port of an absolute http(s) URL, or null if it is neither. Public
+    /// because the access log keys on it for the same reason the trust check compares on
+    /// it: a SMART issuer legitimately carries a path, and the launcher puts the selected
+    /// patient inside that path.
+    /// </summary>
+    public static string? Origin(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
             ? $"{uri.Scheme}://{uri.Host}:{uri.Port}"
@@ -149,11 +159,11 @@ public static class Smart
     public static string CacheKey(string state) => $"launch:{state}";
 
     /// <summary>
-    /// Cache key for a finished launch the learn pages are still walking through. A
-    /// separate namespace from <see cref="CacheKey"/>, which the same state already
-    /// occupies while the launch is in flight.
+    /// Cache key for a launch that finished. Both halves are needed, and that is the
+    /// point: a cookie is per browser and a launch is per patient, so a session holding
+    /// one launch would let a second tab's patient quietly overwrite the first's.
     /// </summary>
-    public static string TranscriptKey(string state) => $"transcript:{state}";
+    public static string ContextKey(string sid, string launchId) => $"context:{sid}:{launchId}";
 
     /// <summary>Stands in for a value that is deliberately not shown.</summary>
     public const string Withheld = "(withheld)";
@@ -181,7 +191,13 @@ public static class Smart
         }
     }
 
-    public static string NewState() => Base64Url(RandomNumberGenerator.GetBytes(32));
+    /// <summary>
+    /// 256 bits from the CSPRNG, base64url. What every id here that must not be guessed
+    /// or enumerated is made of: the OAuth state, the session cookie, the launch id.
+    /// </summary>
+    public static string NewOpaqueId() => Base64Url(RandomNumberGenerator.GetBytes(32));
+
+    public static string NewState() => NewOpaqueId();
 
     /// <summary>PKCE (RFC 7636) verifier and its S256 challenge.</summary>
     public static (string Verifier, string Challenge) NewPkce()

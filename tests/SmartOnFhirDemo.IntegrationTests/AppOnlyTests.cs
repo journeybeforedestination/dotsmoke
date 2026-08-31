@@ -85,6 +85,54 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         Assert.Contains($"http://{AppFixture.AppHost}/learn", html);
     }
 
+    // ---- Two values name a launch, and neither answers alone ---------------
+
+    [Fact]
+    public async Task A_summary_without_a_session_cookie_resolves_nothing()
+    {
+        // A launch id in a URL is not a bearer token: browser history and Referer headers
+        // are full of URLs, and none of them carry this app's cookie.
+        var html = await app.GetAsync("/summary?id=never-issued");
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Fact]
+    public async Task A_summary_with_a_cookie_but_an_unknown_launch_id_resolves_nothing()
+    {
+        var html = await app.GetAsync(
+            "/summary?id=never-issued",
+            cookie: $"{BrowserSession.CookieName}=a-browser-that-launched-something-else"
+        );
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Fact]
+    public async Task A_cookie_on_its_own_does_not_say_which_launch_is_meant()
+    {
+        var html = await app.GetAsync(
+            "/summary",
+            cookie: $"{BrowserSession.CookieName}=a-browser-that-launched-something-else"
+        );
+
+        Assert.Contains("expired or was already completed", html);
+    }
+
+    [Fact]
+    public async Task The_summary_refuses_to_be_stored()
+    {
+        // Unlike the callback it replaced, this URL is stable and can be returned to, so
+        // what a browser or a proxy keeps of a page of patient data is worth saying.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(
+            "/summary?id=never-issued",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
+    }
+
     // ---- The narrated launch fails the same way the plain one does ---------
 
     [Theory]
@@ -112,9 +160,9 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [Fact]
     public async Task A_narrated_identity_step_for_an_unknown_launch_is_refused()
     {
-        var html = await app.GetAsync("/learn/user?state=never-issued");
+        var html = await app.GetAsync("/learn/user?id=never-issued&patient=pat-1");
 
-        Assert.Contains("walkthrough has expired", html);
+        Assert.Contains("no longer open", html);
     }
 
     [Fact]
@@ -126,20 +174,32 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     }
 
     [Theory]
-    [InlineData("/learn/token?state=never-issued")]
-    [InlineData("/learn/patient?state=never-issued")]
-    public async Task A_walkthrough_page_without_a_transcript_says_so(string url)
+    [InlineData("/learn/token?id=never-issued&patient=pat-1")]
+    [InlineData("/learn/patient?id=never-issued&patient=pat-1")]
+    public async Task A_narrated_page_whose_launch_is_gone_asks_for_a_new_one(string url)
     {
+        // The narrated launch resolves its own launch exactly as the plain summary does,
+        // so it refuses the same way and names the patient the page had been showing.
         var html = await app.GetAsync(url);
 
-        Assert.Contains("This walkthrough has expired", html);
+        Assert.Contains("This launch is no longer open", html);
+        Assert.Contains("pat-1", html);
+    }
+
+    [Fact]
+    public async Task A_narrated_page_is_no_more_reachable_without_a_cookie_than_the_summary_is()
+    {
+        // Same two values, same rule: the URL selects and the cookie authenticates.
+        var html = await app.GetAsync("/learn/patient?id=never-issued&patient=pat-1");
+
+        Assert.DoesNotContain("<dt>MRN</dt>", html);
     }
 
     [Theory]
     [InlineData("/learn")]
     [InlineData("/learn/callback")]
-    [InlineData("/learn/token?state=never-issued")]
-    [InlineData("/learn/patient?state=never-issued")]
+    [InlineData("/learn/token?id=never-issued&patient=pat-1")]
+    [InlineData("/learn/patient?id=never-issued&patient=pat-1")]
     public async Task Every_narrated_launch_route_refuses_to_be_stored(string url)
     {
         // Not followed: the header goes on whatever the learn route itself answers, and
