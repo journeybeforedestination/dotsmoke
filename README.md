@@ -22,6 +22,8 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
   app ──GET {iss}/{fhirUser}     Bearer──▶ Practitioner
   app  file the launch against the browser's session cookie
   app ──302──▶ /summary?id={launchId}&patient={id}   ──▶ the summary
+  reader ──GET /summary?…&show=conditions──▶ app
+  app ──GET {iss}/Condition?patient={id}  Bearer──▶ Bundle  ──▶ the panel
 ```
 
 `/callback` renders nothing. It exchanges, files what it got against the browser, and
@@ -63,7 +65,33 @@ To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
 `Smart:Scopes` is what the app asks each of them for. `openid fhirUser` is what makes
 an EHR say who started the launch, and `user/Practitioner.read` is what lets that
 person's name be read; drop either and the launch still works, and the summary simply
-says nobody was named.
+says nobody was named. The three `patient/` scopes after them are the summary's panels,
+and dropping one of those degrades the same way: the panel says the EHR would not answer
+rather than disappearing. They are v1 syntax — `patient/Condition.read`, not
+`patient/Condition.rs`.
+
+## The summary, and reading on from it
+
+The launch lands on `/summary?id={launchId}&patient={id}`, and that URL keeps working
+until the EHR's token runs out. Three panels read on from it — conditions, vital signs
+and medications — each a link rather than any JavaScript, because a link is enough and
+this app has no script at all.
+
+Those reads are searches, not reads by id: `Condition?patient={id}` rather than
+`Condition/{id}`. That is the shape a `patient/Condition.read` scope actually
+authorises — a class of data about one patient, not one URL — and it is the first place
+this app hands Firely a `Bundle` to unpack rather than a single resource. Every panel
+degrades to a sentence: a patient with nothing recorded says so, and a scope the EHR
+declined to grant says that instead, because an empty list and a refusal look identical
+on screen and mean opposite things.
+
+Both round trips are written to the access log, which is the point of capturing at the
+transport: the panels were added after the handler, and did not have to remember to
+audit themselves.
+
+Worth knowing before you read too much into a green run: the SMART App Launcher does
+not enforce scopes the way a real EHR does. A launch against it shows the searches
+working; it shows rather less about what happens when a scope is refused.
 
 ## The same launch, narrated
 
@@ -181,7 +209,9 @@ Design decisions about the .NET side rather than about SMART.
   one file, and the pages stay markup.
 - **Firely does the FHIR work**, not just the HTTP call: FHIRPath for element
   selection, `EnumUtility` for coded display text, `Date` for partial birth
-  dates, `OperationOutcome` for server errors.
+  dates, `OperationOutcome` for server errors, and `Bundle` plus the typed POCOs
+  for the summary's panels — one `CodeableConcept` shape names a condition, an
+  observation and a medication alike.
 
 ## Tests
 
@@ -242,14 +272,14 @@ dotnet test --no-build --coverage --coverage-settings coverage.config \
 ./.github/coverage.sh                    # merge the two reports, report the rate
 ```
 
-That last line runs both projects, not only the fast one. Twenty-six of the
-thirty-nine integration tests need no launcher — among them every untrusted-issuer
-refusal, which is the app's central security property — and the thirteen that do skip
-themselves. The whole job stays offline.
+That last line runs both projects, not only the fast one. Twenty-six of the forty-one
+integration tests need no launcher — among them every untrusted-issuer refusal, which is
+the app's central security property — and the fifteen that do skip themselves. The whole
+job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the
 container first. Because it runs the whole suite, that job is also where the coverage
-floor lives — currently 93%, against a measured 95.0%. The gap is slack, not laxity:
+floor lives — currently 93%, against a measured 94.0%. The gap is slack, not laxity:
 the job reaches a public sandbox that can be reseeded, and a patient turning up without
 a phone number should not read as a regression. Because those tests skip themselves when `SMART_LAUNCHER_URL`
 answers nothing, a container that failed to start would leave the job green while

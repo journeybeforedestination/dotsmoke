@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Hl7.Fhir.Model;
+using Hl7.Fhir.Utility;
 
 namespace SmartOnFhirDemo;
 
@@ -60,8 +61,47 @@ public static class LaunchMessages
             _ => "The EHR named nobody in the id_token it returned.",
         };
 
+    /// <summary>
+    /// What an OperationOutcome actually says, flattened to a sentence. FHIR servers put
+    /// the useful part in any of three places, and an app that reads only one of them
+    /// reports "an error occurred" against a server that said exactly what was wrong.
+    /// </summary>
+    public static string? Describe(OperationOutcome? outcome) =>
+        outcome?.Issue is { Count: > 0 } issues
+            ? string.Join(
+                "; ",
+                issues.Select(i => i.Details?.Text ?? i.Diagnostics ?? i.Code.GetLiteral())
+            )
+            : null;
+
     public static string AuthorizationDenied(string reason) =>
         $"The EHR refused the authorization request: {reason}";
+
+    /// <summary>
+    /// Why a panel is showing no rows. Every one of these is a sentence rather than an
+    /// empty list, because "this patient has no conditions recorded" and "the EHR would
+    /// not tell us" look identical otherwise and mean opposite things.
+    /// </summary>
+    public static string For(ChartOutcome outcome) =>
+        outcome switch
+        {
+            ChartOutcome.Read(var panel, var entries) =>
+                $"{entries.Count} {panel.Title.ToLowerInvariant()}.",
+
+            ChartOutcome.Empty(var panel) =>
+                $"The EHR has no {panel.Title.ToLowerInvariant()} recorded for this patient.",
+
+            ChartOutcome.Denied(var panel, var status) =>
+                $"The EHR would not return {panel.Title.ToLowerInvariant()} ({status}). "
+                    + "Asking for a scope does not oblige an EHR to grant it.",
+
+            ChartOutcome.Unavailable(var panel, var status, var reason) =>
+                $"The EHR returned {status} for {panel.Title.ToLowerInvariant()}: {reason}",
+
+            ChartOutcome.LaunchGone => UnknownLaunch,
+
+            _ => throw new UnreachableException($"{outcome.GetType().Name} is not an outcome."),
+        };
 
     public static string For(LaunchOutcome outcome) =>
         outcome switch

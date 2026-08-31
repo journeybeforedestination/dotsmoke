@@ -15,11 +15,16 @@ public sealed class SmartOptions
     /// <summary>
     /// What the app asks the EHR for. <c>openid fhirUser</c> is what makes the EHR
     /// return an id_token naming the user who started the launch; <c>user/Practitioner.read</c>
-    /// is what lets that name be read. Both are asked for narrowly rather than as
+    /// is what lets that name be read. The three <c>patient/</c> scopes after them are the
+    /// summary's follow-up panels. All of them are asked for narrowly rather than as
     /// <c>user/*.read</c>, because this app only handles a provider EHR launch.
+    ///
+    /// v1 syntax. Moving to v2 (<c>patient/Condition.rs</c>) is a lesson about showing the
+    /// gap between what was requested and what was granted, and deserves its own change.
     /// </summary>
     public string Scopes { get; set; } =
-        "launch openid fhirUser patient/Patient.read user/Practitioner.read";
+        "launch openid fhirUser patient/Patient.read user/Practitioner.read "
+        + "patient/Condition.read patient/Observation.read patient/MedicationRequest.read";
 
     /// <summary>
     /// The EHRs this app will accept a launch from. A real app is registered with each

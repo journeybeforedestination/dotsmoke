@@ -10,8 +10,10 @@ builder.Services.AddHttpClient();
 
 // Named so its handler can be taken from the pool and wrapped per launch by the access
 // log. Nothing else is configured on it yet.
-builder.Services.AddHttpClient(SmartLaunch.FhirClientName);
+builder.Services.AddHttpClient(FhirClients.Name);
 builder.Services.AddScoped<SmartLaunch>();
+builder.Services.AddScoped<FhirClients>();
+builder.Services.AddScoped<Chart>();
 builder.Services.AddScoped<Jwks>();
 
 // The one thing here that survives a restart. Everything else this app holds is a

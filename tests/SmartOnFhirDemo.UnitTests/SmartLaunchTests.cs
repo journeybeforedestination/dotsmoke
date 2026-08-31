@@ -713,6 +713,163 @@ public class SmartLaunchTests : IDisposable
         Assert.Equal([("pat-1", "Patient/pat-1"), ("pat-2", "Patient/pat-2")], reads);
     }
 
+    // ---- Reading on after the summary -------------------------------------
+
+    private const string ConditionBundle = """
+        {"resourceType":"Bundle","type":"searchset","entry":[
+          {"resource":{"resourceType":"Condition","id":"c1",
+            "clinicalStatus":{"coding":[{"code":"active","display":"Active"}]},
+            "code":{"text":"Essential hypertension"}}},
+          {"resource":{"resourceType":"Condition","id":"c2",
+            "code":{"coding":[{"code":"44054006","display":"Type 2 diabetes mellitus"}]}}}]}
+        """;
+
+    /// <summary>A launch already established, so a panel has something to read against.</summary>
+    private async Task<(Chart Chart, IMemoryCache Cache, LaunchContext Context)> EstablishedAsync(
+        Func<HttpRequestMessage, HttpResponseMessage> respond
+    )
+    {
+        var smart = Completing(TokenJson);
+
+        var result = await smart.CompleteAsync(
+            "the-code",
+            "the-state",
+            error: null,
+            errorDescription: null,
+            Session,
+            TestContext.Current.CancellationToken
+        );
+
+        var context = result.Context!;
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        cache.RememberLaunch(
+            "one-browser",
+            context,
+            (CallbackOutcome.Completed)result.Outcome,
+            TestIdTokens.Clock
+        );
+
+        var clients = new StubClientFactory(new StubHandler(respond));
+
+        return (
+            new Chart(
+                cache,
+                new FhirClients(clients, _accessLog.Log, TestIdTokens.Clock),
+                TestIdTokens.Clock,
+                NullLogger<Chart>.Instance
+            ),
+            cache,
+            context
+        );
+    }
+
+    private async Task<ChartOutcome> PanelAsync(
+        Func<HttpRequestMessage, HttpResponseMessage> respond,
+        ChartPanel? panel = null
+    )
+    {
+        var (chart, _, context) = await EstablishedAsync(respond);
+
+        return await chart.ReadAsync(
+            "one-browser",
+            context.LaunchId,
+            context.PatientId,
+            panel ?? ChartPanel.Conditions,
+            TestContext.Current.CancellationToken
+        );
+    }
+
+    [Fact]
+    public async Task A_panel_reads_the_search_the_launch_is_scoped_to()
+    {
+        string? asked = null;
+
+        var read = Assert.IsType<ChartOutcome.Read>(
+            await PanelAsync(request =>
+            {
+                asked = request.RequestUri!.PathAndQuery;
+                return Fhir(ConditionBundle);
+            })
+        );
+
+        // Searched for this patient, not read by id: the token authorises a class of data.
+        Assert.Contains("Condition", asked);
+        Assert.Contains("patient=pat-1", asked);
+
+        // The EHR's own wording where it gave one, and the coding's display where it did
+        // not. Neither is a code this app maps.
+        Assert.Equal(["Essential hypertension — Active", "Type 2 diabetes mellitus"], read.Entries);
+    }
+
+    [Fact]
+    public async Task A_vitals_panel_asks_for_the_category_and_not_every_observation()
+    {
+        string? asked = null;
+
+        await PanelAsync(
+            request =>
+            {
+                asked = request.RequestUri!.PathAndQuery;
+                return Fhir("""{"resourceType":"Bundle","type":"searchset"}""");
+            },
+            ChartPanel.Vitals
+        );
+
+        Assert.Contains("category=vital-signs", asked);
+    }
+
+    [Fact]
+    public async Task A_patient_with_none_of_something_is_said_so_rather_than_shown_nothing()
+    {
+        var outcome = await PanelAsync(_ =>
+            Fhir("""{"resourceType":"Bundle","type":"searchset"}""")
+        );
+
+        // An empty list and a refusal look identical on screen and mean opposite things.
+        Assert.IsType<ChartOutcome.Empty>(outcome);
+        Assert.Contains("no conditions recorded", LaunchMessages.For(outcome));
+    }
+
+    [Fact]
+    public async Task A_scope_the_ehr_did_not_grant_is_a_sentence_not_a_failure()
+    {
+        var outcome = Assert.IsType<ChartOutcome.Denied>(
+            await PanelAsync(_ => Fhir(ForbiddenOutcome, HttpStatusCode.Forbidden))
+        );
+
+        Assert.Equal(403, outcome.Status);
+        Assert.Contains("does not oblige an EHR to grant it", LaunchMessages.For(outcome));
+    }
+
+    [Fact]
+    public async Task A_panel_is_written_to_the_access_log_like_any_other_read()
+    {
+        await PanelAsync(_ => Fhir(ConditionBundle));
+
+        var search = Assert.Single(await RowsAsync(), entry => entry.ResourceType == "Condition");
+
+        Assert.Equal("pat-1", search.PatientId);
+        Assert.Equal(AccessOutcome.Ok, search.Outcome);
+    }
+
+    [Fact]
+    public async Task A_panel_asked_for_by_a_browser_that_did_not_launch_it_reads_nothing()
+    {
+        var (chart, _, context) = await EstablishedAsync(_ =>
+            throw new Xunit.Sdk.XunitException("No search should be made.")
+        );
+
+        Assert.IsType<ChartOutcome.LaunchGone>(
+            await chart.ReadAsync(
+                "another-browser",
+                context.LaunchId,
+                context.PatientId,
+                ChartPanel.Conditions,
+                TestContext.Current.CancellationToken
+            )
+        );
+    }
+
     // ---- Fixtures ---------------------------------------------------------
 
     private const string AccessToken = "the-access-token";
@@ -783,10 +940,9 @@ public class SmartLaunchTests : IDisposable
 
         return new SmartLaunch(
             clients,
-            clients,
+            new FhirClients(clients, _accessLog.Log, TestIdTokens.Clock),
             Options.Create(new SmartOptions { TrustedIssuers = [Iss] }),
             new Jwks(clients, new MemoryCache(new MemoryCacheOptions()), NullLogger<Jwks>.Instance),
-            _accessLog.Log,
             TestIdTokens.Clock,
             NullLogger<SmartLaunch>.Instance
         );

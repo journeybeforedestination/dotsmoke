@@ -166,6 +166,37 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     private static string LaunchId(Uri summary) =>
         Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(summary.Query)["id"]!;
 
+    // ---- Reading on from the summary --------------------------------------
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_summary_offers_the_panels_the_launch_asked_for_scopes_for()
+    {
+        var html = await LaunchAsync();
+
+        foreach (var panel in ChartPanel.All)
+            Assert.Contains($"show={panel.Slug}", html);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task A_panel_reads_on_from_the_launch_that_is_already_open()
+    {
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+
+        using var response = await client.GetAsync(
+            new Uri($"{landed}&show={ChartPanel.Conditions.Slug}"),
+            TestContext.Current.CancellationToken
+        );
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Which conditions the sandbox serves is not the point, and it can be reseeded;
+        // that the launch was still live enough to search on is.
+        Assert.Contains(ChartPanel.Conditions.Title, html);
+        Assert.DoesNotContain("no longer open", html);
+        Assert.DoesNotContain("would not return", html);
+    }
+
     // ---- Failures the launcher can simulate for real ----------------------
 
     [Theory(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]

@@ -101,30 +101,59 @@ public static class LaunchCache
         TimeProvider clock
     )
     {
+        var (launch, refused) = cache.Look(sid, launchId, patientId, clock);
+
+        return refused
+            ?? new LaunchResolution.Resolved(
+                new LaunchView(launch!.Context.Facts, launch.Rendered)
+            );
+    }
+
+    /// <summary>
+    /// The same launch with its credential, for the code that makes requests with it. Kept
+    /// apart from <see cref="Resolve"/> so that the method the pages call cannot return a
+    /// token: what they get has no property to read one off.
+    /// </summary>
+    internal static LaunchContext? Credential(
+        this IMemoryCache cache,
+        string? sid,
+        string? launchId,
+        string? patientId,
+        TimeProvider clock
+    ) => cache.Look(sid, launchId, patientId, clock).Launch?.Context;
+
+    private static (EstablishedLaunch? Launch, LaunchResolution? Refused) Look(
+        this IMemoryCache cache,
+        string? sid,
+        string? launchId,
+        string? patientId,
+        TimeProvider clock
+    )
+    {
         if (
             string.IsNullOrEmpty(sid)
             || string.IsNullOrEmpty(launchId)
             || string.IsNullOrEmpty(patientId)
         )
-            return new LaunchResolution.Unknown();
+            return (null, new LaunchResolution.Unknown());
 
         if (
             !cache.TryGetValue(Smart.ContextKey(sid, launchId), out EstablishedLaunch? launch)
             || launch is null
         )
-            return new LaunchResolution.Unknown();
+            return (null, new LaunchResolution.Unknown());
 
         // Against the injected clock rather than left to the cache's own housekeeping, so a
         // launch is gone the moment its token is rather than whenever the entry is swept.
         // Once it has been swept this is unreachable and an expired launch reads as an
         // unknown one, which is honest: by then the app has nothing left to tell them apart.
         if (launch.Context.ExpiresAt <= clock.GetUtcNow())
-            return new LaunchResolution.Expired();
+            return (null, new LaunchResolution.Expired());
 
         if (!string.Equals(launch.Context.PatientId, patientId, StringComparison.Ordinal))
-            return new LaunchResolution.PatientMismatch(launch.Context.Facts, patientId);
+            return (null, new LaunchResolution.PatientMismatch(launch.Context.Facts, patientId));
 
-        return new LaunchResolution.Resolved(new LaunchView(launch.Context.Facts, launch.Rendered));
+        return (launch, null);
     }
 }
 

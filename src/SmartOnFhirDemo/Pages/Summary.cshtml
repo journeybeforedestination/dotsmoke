@@ -8,7 +8,49 @@
 
 <partial name="_Summary" model="Model.Summary" />
 
+<nav class="next">
+    @foreach (var panel in ChartPanel.All)
+    {
+        <a class="button" href="@Model.Link(panel)">@panel.Title</a>
+    }
+</nav>
+
+@if (Model.Panel is { } shown)
+{
+    <section class="step">
+        <h2>@Panel(shown).Title</h2>
+
+        @if (shown is ChartOutcome.Read read)
+        {
+            <ul>
+                @foreach (var entry in read.Entries)
+                {
+                    <li>@entry</li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="note">@LaunchMessages.For(shown)</p>
+        }
+    </section>
+}
+
 <details>
     <summary>Raw Patient resource</summary>
     <pre>@Model.RawJson</pre>
 </details>
+
+@functions {
+    // Every outcome names the panel it is about; the markup only needs its title.
+    static ChartPanel Panel(ChartOutcome outcome) =>
+        outcome switch
+        {
+            ChartOutcome.Read(var panel, _) => panel,
+            ChartOutcome.Empty(var panel) => panel,
+            ChartOutcome.Denied(var panel, _) => panel,
+            ChartOutcome.Unavailable(var panel, _, _) => panel,
+            ChartOutcome.LaunchGone(var panel) => panel,
+            _ => throw new System.Diagnostics.UnreachableException(),
+        };
+}

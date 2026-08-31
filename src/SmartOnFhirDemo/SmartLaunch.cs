@@ -1,10 +1,8 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Hl7.Fhir.Serialization;
-using Hl7.Fhir.Utility;
 using Microsoft.Extensions.Options;
 
 namespace SmartOnFhirDemo;
@@ -121,21 +119,13 @@ public sealed record CallbackResult(CallbackOutcome Outcome, LaunchContext? Cont
 /// </summary>
 public sealed partial class SmartLaunch(
     IHttpClientFactory clients,
-    IHttpMessageHandlerFactory handlers,
+    FhirClients fhirClients,
     IOptions<SmartOptions> options,
     Jwks jwks,
-    AccessLog accessLog,
     TimeProvider clock,
     ILogger<SmartLaunch> log
 )
 {
-    /// <summary>
-    /// The named client every FHIR read goes through. Named so its handler can be taken
-    /// from the factory's pool and wrapped per launch; timeouts, retries and a user-agent
-    /// belong on this registration too, and are their own change.
-    /// </summary>
-    public const string FhirClientName = "fhir";
-
     private SmartOptions Options => options.Value;
 
     [LoggerMessage(
@@ -348,32 +338,11 @@ public sealed partial class SmartLaunch(
         var iss = context.Iss;
         var patientUrl = $"{iss.TrimEnd('/')}/Patient/{token.Patient}";
 
-        // The inner handler comes from the factory's pool; the outer one is built here,
-        // per launch, because it is the only way it can be told which launch it is for.
-        // See AccessLogHandler for why resolving that from DI would be a bug.
-        var audited = new AccessLogHandler(context, accessLog, clock)
-        {
-            InnerHandler = handlers.CreateHandler(FhirClientName),
-        };
-
-        // disposeHandler: false — the inner handler belongs to the pool, and disposing it
-        // would take it down for every other launch sharing it. Firely's documentation is
-        // explicit that an injected HttpClient is the caller's to dispose, so this does.
-        using var http = new HttpClient(audited, disposeHandler: false);
-        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer",
-            context.AccessToken
-        );
-
-        using var fhir = new FhirClient(
-            iss,
-            http,
-            new FhirClientSettings
-            {
-                PreferredFormat = ResourceFormat.Json,
-                VerifyFhirVersion = true,
-            }
-        );
+        // The one read that asks the server what it is first: nothing is known about it
+        // yet, and a launch against a server that is not R4 should say so rather than fail
+        // on the first field that is missing.
+        using var client = fhirClients.Open(context, verifyVersion: true);
+        var fhir = client.Fhir;
 
         try
         {
@@ -404,7 +373,7 @@ public sealed partial class SmartLaunch(
             LogPatientReadFailed(ex, token.Patient);
             return new CallbackOutcome.PatientReadFailed(
                 (int)ex.Status,
-                Describe(ex.Outcome) ?? ex.Message
+                LaunchMessages.Describe(ex.Outcome) ?? ex.Message
             );
         }
         catch (NotSupportedException ex)
@@ -493,12 +462,4 @@ public sealed partial class SmartLaunch(
         !Uri.IsWellFormedUriString(fhirUser, UriKind.Absolute) ? fhirUser
         : Smart.SameOrigin(iss, fhirUser) ? fhirUser
         : null;
-
-    private static string? Describe(OperationOutcome? outcome) =>
-        outcome?.Issue is { Count: > 0 } issues
-            ? string.Join(
-                "; ",
-                issues.Select(i => i.Details?.Text ?? i.Diagnostics ?? i.Code.GetLiteral())
-            )
-            : null;
 }
