@@ -111,6 +111,28 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.Contains("&quot;resourceType&quot;: &quot;Patient&quot;", html);
     }
 
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task Starting_a_launch_hands_out_no_session_before_there_is_one_to_hold()
+    {
+        // A session is what holds a launch. On the way out to the EHR there is no launch
+        // yet — only one in flight, which the cache keys by state — so there is nothing
+        // for a cookie to name and none is set.
+        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
+
+        using var client = launcher.CreateDirectClient();
+        using var response = await client.GetAsync(
+            $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
+                + $"&launch={Uri.EscapeDataString(launch)}",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.DoesNotContain(
+            response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [],
+            cookie => cookie.StartsWith(BrowserSession.CookieName, StringComparison.Ordinal)
+        );
+    }
+
     // ---- Two open patients ------------------------------------------------
     //
     // The end-to-end proof, and it only runs where a launcher does — which is the nightly

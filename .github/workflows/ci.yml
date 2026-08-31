@@ -58,7 +58,7 @@ jobs:
           --project src/SmartOnFhirDemo --no-build
 
       # Both projects. Twenty-seven of the integration tests need no launcher — among
-      # them every untrusted-issuer refusal — and the eighteen that do skip themselves.
+      # them every untrusted-issuer refusal — and the nineteen that do skip themselves.
       - name: Test
         run: >
           dotnet test --no-build

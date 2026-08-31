@@ -46,13 +46,13 @@ app.MapGet(
     async (
         string? iss,
         string? launch,
-        HttpContext http,
+        HttpRequest request,
         SmartLaunch smart,
         IMemoryCache cache,
         CancellationToken ct
     ) =>
     {
-        var redirectUri = $"{http.Request.Scheme}://{http.Request.Host}/callback";
+        var redirectUri = $"{request.Scheme}://{request.Host}/callback";
 
         var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
 
@@ -62,11 +62,6 @@ app.MapGet(
 
         IResult Remember(LaunchOutcome.Prepared prepared)
         {
-            // The browser gets its id where it starts a launch, not where it comes back
-            // from one, so a launch that is abandoned at the EHR leaves the same trace as
-            // one that is not.
-            BrowserSession.Establish(http);
-
             cache.Remember(prepared);
             return Results.Redirect(prepared.AuthorizeUrl);
         }

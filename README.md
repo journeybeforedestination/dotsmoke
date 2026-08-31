@@ -205,7 +205,13 @@ Design decisions about the .NET side rather than about SMART.
   Albertine Orn" is most of how a clinician is addressed.
 - **Two launches in one browser stay apart.** A cookie is per browser; a launch is per
   patient. So the session is a map from launch id to context rather than a single slot:
-  a second tab launching a second patient adds a launch instead of replacing one. Get
+  a second tab launching a second patient adds a launch instead of replacing one. The
+  cookie is set where a launch completes rather than where one starts — a session is
+  what holds a launch, so there is no reason for one to exist before there is a launch
+  to put in it, and a browser reaching the callback without one has simply not launched
+  before. That is also what makes `SameSite=Lax` load-bearing: the EHR's redirect back
+  is a cross-site top-level GET, and under `Strict` a second launch would arrive without
+  the first's cookie and open a session of its own, putting the first out of reach. Get
   that wrong and the failure has one specific shape — the first tab, still showing
   patient 123's banner, asks for more and is handed patient 456's data, silently, with
   no error anywhere. On top of that, every page carries the patient it believes it is
@@ -309,9 +315,9 @@ The migration check is there because the failure it catches is silent. Editing
 leaves a schema that is missing the change; `Database.Migrate()` still starts
 cleanly against it, and the first query is where it goes wrong.
 
-That last line runs both projects, not only the fast one. Twenty-seven of the forty-five
+That last line runs both projects, not only the fast one. Twenty-seven of the forty-six
 integration tests need no launcher — among them every untrusted-issuer refusal, which is
-the app's central security property — and the eighteen that do skip themselves. The whole
+the app's central security property — and the nineteen that do skip themselves. The whole
 job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the

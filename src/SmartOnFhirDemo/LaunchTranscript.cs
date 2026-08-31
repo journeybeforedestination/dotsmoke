@@ -296,8 +296,8 @@ public static class LaunchTranscript
                 new StepField(
                     "SameSite",
                     "Lax",
-                    "Load-bearing: Strict would drop the cookie on the EHR's redirect back in "
-                        + "step 4, and every launch would fail."
+                    "Load-bearing: Strict withholds cookies on the EHR's redirect back, so a "
+                        + "second launch could not join this session."
                 ),
                 new StepField(
                     "launch id",

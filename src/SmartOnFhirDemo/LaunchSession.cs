@@ -84,7 +84,12 @@ public static class BrowserSession
 {
     public const string CookieName = ".dotsmoke.sid";
 
-    /// <summary>The browser's id, minting and setting one if the request arrived without.</summary>
+    /// <summary>
+    /// The browser's id, minting and setting one if the request arrived without. Called
+    /// only where a launch has just completed: a session is what holds a launch, so there
+    /// is no reason for one to exist before there is a launch to put in it, and a browser
+    /// arriving here without a cookie is simply one that has not launched before.
+    /// </summary>
     public static string Establish(HttpContext http)
     {
         if (Current(http) is { } established)
@@ -101,8 +106,11 @@ public static class BrowserSession
 
                 // Lax, and this is load-bearing rather than a default. The EHR sends the
                 // browser back to /callback from its own origin — a cross-site top-level
-                // GET, which Lax permits and Strict drops. Under Strict the cookie would
-                // not arrive and every launch would end as an unknown one.
+                // GET, which Lax permits and Strict drops. A first launch would survive
+                // Strict, because it has no cookie to withhold and mints one here anyway.
+                // A second would not: it would arrive without the first's cookie, open a
+                // session of its own, and take the first launch out of reach — which is
+                // the isolation this whole design exists to keep.
                 SameSite = SameSiteMode.Lax,
 
                 // The one place this demo knowingly relaxes: the README has you run it on
