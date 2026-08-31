@@ -57,8 +57,8 @@ jobs:
           dotnet ef migrations has-pending-model-changes
           --project src/SmartOnFhirDemo --no-build
 
-      # Both projects. Twenty-six of the integration tests need no launcher — among
-      # them every untrusted-issuer refusal — and the sixteen that do skip themselves.
+      # Both projects. Twenty-seven of the integration tests need no launcher — among
+      # them every untrusted-issuer refusal — and the eighteen that do skip themselves.
       - name: Test
         run: >
           dotnet test --no-build
@@ -131,6 +131,6 @@ jobs:
       # at it: this job reaches a public sandbox that can be reseeded, and a patient
       # arriving without a phone number should not read as a regression.
       #
-      # Measured 96.8% on 2026-08-31. Raise this when it has comfortably moved up.
+      # Measured 97.2% on 2026-08-31. Raise this when it has comfortably moved up.
       - name: Report coverage
         run: ./.github/coverage.sh 93

@@ -8,33 +8,7 @@
 
 <partial name="_Summary" model="Model.Summary" />
 
-<nav class="next">
-    @foreach (var panel in ChartPanel.All)
-    {
-        <a class="button" href="@Model.Link(panel)">@panel.Title</a>
-    }
-</nav>
-
-@if (Model.Panel is { } shown)
-{
-    <section class="step">
-        <h2>@shown.Panel.Title</h2>
-
-        @if (shown is ChartOutcome.Read read)
-        {
-            <ul>
-                @foreach (var entry in read.Entries)
-                {
-                    <li>@entry</li>
-                }
-            </ul>
-        }
-        else
-        {
-            <p class="note">@LaunchMessages.For(shown)</p>
-        }
-    </section>
-}
+<partial name="_Chart" model="Model.Chart" />
 
 <details>
     <summary>Raw Patient resource</summary>

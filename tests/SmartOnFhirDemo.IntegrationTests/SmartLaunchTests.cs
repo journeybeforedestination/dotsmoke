@@ -253,12 +253,21 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// </summary>
     private async Task<(string Opening, string Pause)> LearnAsync()
     {
+        using var client = launcher.CreateChainClient();
+        return await LearnAsync(client);
+    }
+
+    /// <summary>
+    /// The same walk down a client the caller owns, for tests that carry on past the
+    /// pause: the exchange is antiforgery-protected, so it needs the jar that holds the
+    /// cookie the pause was served with.
+    /// </summary>
+    private async Task<(string Opening, string Pause)> LearnAsync(HttpClient client)
+    {
         var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
         var url =
             $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
-
-        using var client = launcher.CreateChainClient();
 
         using var opening = await client.GetAsync(url);
         Assert.True(
@@ -311,44 +320,22 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.Contains("(withheld)", pause);
     }
 
-    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task The_narrated_launch_explains_who_started_it()
+    /// <summary>
+    /// Posts the pause's form back. That spends the code, opens the session, and lands on
+    /// a URL naming the launch — which is what every page after it navigates by.
+    /// </summary>
+    private static async Task<(Uri Landed, string Html)> ExchangeAsync(
+        HttpClient client,
+        string pauseHtml
+    )
     {
-        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
-
-        using var client = launcher.CreateChainClient();
-
-        using var opening = await client.GetAsync(
-            $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
-                + $"&launch={Uri.EscapeDataString(launch)}",
-            TestContext.Current.CancellationToken
-        );
-        var authorize = WebUtility.HtmlDecode(
-            Regex
-                .Match(
-                    await opening.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
-                    "class=\"button\" href=\"(?<url>[^\"]+)\""
-                )
-                .Groups["url"]
-                .Value
-        );
-
-        using var pause = await client.GetAsync(authorize, TestContext.Current.CancellationToken);
-        var pauseHtml = await pause.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken
-        );
-        var state = Hidden(pauseHtml, "State");
-
-        // The exchange is a Razor Pages POST, so it is antiforgery-protected: the token in
-        // the form only counts alongside the cookie that came with the page carrying it,
-        // which the client's jar is already holding.
         using var exchange = new HttpRequestMessage(HttpMethod.Post, "/learn/callback")
         {
             Content = new FormUrlEncodedContent(
                 new Dictionary<string, string>
                 {
                     ["Code"] = Hidden(pauseHtml, "Code"),
-                    ["State"] = state,
+                    ["State"] = Hidden(pauseHtml, "State"),
                     ["__RequestVerificationToken"] = Hidden(
                         pauseHtml,
                         "__RequestVerificationToken"
@@ -366,16 +353,25 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
             $"The exchange ended at {(int)exchanged.StatusCode}."
         );
 
-        // The exchange establishes a session and redirects to a URL naming the launch, so
-        // the state that got us here is spent and the walkthrough carries on by launch id.
         var landed = exchanged.RequestMessage!.RequestUri!;
+
+        // The state that got us here is spent; the walkthrough carries on by launch id.
         Assert.Contains("id=", landed.Query, StringComparison.Ordinal);
         Assert.DoesNotContain("state=", landed.Query, StringComparison.Ordinal);
 
-        var tokenPage = await exchanged.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken
+        return (
+            landed,
+            await exchanged.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)
         );
-        Assert.Contains("The session this launch opened", tokenPage);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_narrated_launch_explains_who_started_it()
+    {
+        using var client = launcher.CreateChainClient();
+
+        var (_, pause) = await LearnAsync(client);
+        var (landed, _) = await ExchangeAsync(client, pause);
 
         using var identity = await client.GetAsync(
             new Uri($"/learn/user{landed.Query}", UriKind.Relative),
@@ -388,6 +384,53 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         // The claim was followed to a real resource, not merely reported.
         Assert.DoesNotContain("Nobody, as far as this launch can prove", html);
         Assert.Contains("Practitioner", html);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_narrated_launch_says_what_the_session_it_opened_holds()
+    {
+        using var client = launcher.CreateChainClient();
+
+        var (_, pause) = await LearnAsync(client);
+
+        // The exchange lands straight on the token page, which carries steps 5 and 6.
+        var (_, html) = await ExchangeAsync(client, pause);
+
+        Assert.Contains("The session this launch opened", html);
+
+        // The two halves that name a launch are described; neither is shown.
+        Assert.Contains(BrowserSession.CookieName, html);
+        Assert.Contains("SameSite", html);
+        Assert.Contains(Smart.Withheld, html);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_narrated_launch_ends_with_the_same_panels_the_plain_one_offers()
+    {
+        // Feature parity is the claim /learn makes by narrating this app rather than a
+        // simpler one, and the last page is where it would quietly stop being true.
+        using var client = launcher.CreateChainClient();
+
+        var (_, pause) = await LearnAsync(client);
+        var (landed, _) = await ExchangeAsync(client, pause);
+
+        using var response = await client.GetAsync(
+            new Uri(
+                $"/learn/patient{landed.Query}&show={ChartPanel.Conditions.Slug}",
+                UriKind.Relative
+            ),
+            TestContext.Current.CancellationToken
+        );
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        foreach (var panel in ChartPanel.All)
+            Assert.Contains($"show={panel.Slug}", html);
+
+        Assert.Contains(ChartPanel.Conditions.Title, html);
+        Assert.DoesNotContain("no longer open", html);
+
+        // Still the walkthrough, not a second summary page: the narration is above it.
+        Assert.Contains("Reading the patient", html);
     }
 
     // ---- Helpers ----------------------------------------------------------

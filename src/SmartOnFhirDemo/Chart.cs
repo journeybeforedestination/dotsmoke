@@ -75,6 +75,21 @@ public abstract record ChartOutcome
 }
 
 /// <summary>
+/// The panels a page offers, the links to them, and the one it is showing. Shared by the
+/// plain summary and the narrated one so the two cannot drift apart: they are the same
+/// launch read the same way, and a reader who took the long route should not arrive with
+/// less than one who did not.
+/// </summary>
+/// <param name="Path">The page the links point back at, which is the only difference between them.</param>
+public sealed record ChartView(string Path, string LaunchId, string PatientId, ChartOutcome? Shown)
+{
+    public string Link(ChartPanel panel) =>
+        $"{Path}?id={Uri.EscapeDataString(LaunchId)}"
+        + $"&patient={Uri.EscapeDataString(PatientId)}"
+        + $"&show={panel.Slug}";
+}
+
+/// <summary>
 /// The follow-up reads a summary can make once a launch is something you can come back
 /// to. It takes the launch by name rather than by context so the credential stays below
 /// the page: the caller says which browser, which launch and which patient, and what
@@ -92,6 +107,27 @@ public sealed partial class Chart(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the {panel} panel failed")]
     private partial void LogPanelFailed(Exception ex, string panel);
+
+    /// <summary>
+    /// Everything a page needs to show the panels: the links, and whatever <c>show</c>
+    /// asked for. One method rather than a rule each page remembers — that a name which is
+    /// not a panel shows nothing rather than failing is decided once, here.
+    /// </summary>
+    public async Task<ChartView> ViewAsync(
+        string path,
+        string? sid,
+        LaunchFacts facts,
+        string? show,
+        CancellationToken ct
+    ) =>
+        new(
+            path,
+            facts.LaunchId,
+            facts.PatientId,
+            ChartPanel.For(show) is { } panel
+                ? await ReadAsync(sid, facts.LaunchId, facts.PatientId, panel, ct)
+                : null
+        );
 
     public async Task<ChartOutcome> ReadAsync(
         string? sid,

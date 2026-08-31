@@ -21,18 +21,8 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
     /// <summary>Who started this launch, or why the app cannot say.</summary>
     public string WhoLaunchedIt { get; private set; } = "";
 
-    /// <summary>The panel this page was asked for, or null when it was asked for none.</summary>
-    public ChartOutcome? Panel { get; private set; }
-
-    /// <summary>Where the panel links point. The launch is named the same way every time.</summary>
-    public string Link(ChartPanel panel) =>
-        $"/summary?id={Uri.EscapeDataString(LaunchId)}"
-        + $"&patient={Uri.EscapeDataString(PatientId)}"
-        + $"&show={panel.Slug}";
-
-    private string LaunchId { get; set; } = "";
-
-    private string PatientId { get; set; } = "";
+    /// <summary>The panels this page offers, and whichever one it was asked to show.</summary>
+    public ChartView Chart { get; private set; } = default!;
 
     /// <param name="patient">
     /// The patient this page believes it is showing. Carried so the server can disagree:
@@ -56,17 +46,15 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
                 Summary = view.Rendered.Summary;
                 RawJson = view.Rendered.RawJson;
                 WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(view.Rendered);
-                (LaunchId, PatientId) = (view.Facts.LaunchId, view.Facts.PatientId);
 
                 // By name, not by context: the credential stays below this page.
-                if (ChartPanel.For(show) is { } panel)
-                    Panel = await chart.ReadAsync(
-                        BrowserSession.Current(HttpContext),
-                        id,
-                        patient,
-                        panel,
-                        ct
-                    );
+                Chart = await chart.ViewAsync(
+                    "/summary",
+                    BrowserSession.Current(HttpContext),
+                    view.Facts,
+                    show,
+                    ct
+                );
 
                 return Page();
 

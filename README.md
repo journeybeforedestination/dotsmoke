@@ -89,6 +89,12 @@ Both round trips are written to the access log, which is the point of capturing 
 transport: the panels were added after the handler, and did not have to remember to
 audit themselves.
 
+`/learn` ends on the same panels, from the same shared partial, reading through the same
+service. That is deliberate rather than incidental — a walkthrough that left you with
+less than the plain launch would be teaching a smaller app than the one it narrated —
+and an integration test asserts it, because parity is exactly the kind of claim that
+rots quietly.
+
 Worth knowing before you read too much into a green run: the SMART App Launcher does
 not enforce scopes the way a real EHR does. A launch against it shows the searches
 working; it shows rather less about what happens when a scope is refused.
@@ -116,6 +122,10 @@ SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
                /learn/user    ──▶ ⑦ who launched it, and how that was proved   [continue]
                /learn/patient ──▶ ⑧ the FHIR read, the summary, and the panels
 ```
+
+Step ⑧ ends where `/summary` does, panels included. The reads behind those buttons
+happen when you press them, not during the handshake, which is the point the last page
+makes: the launch is still open, and that is what step ⑥ bought.
 
 Every page carries the eight steps across the top, so you can see where you are
 and how much is left.
@@ -299,14 +309,14 @@ The migration check is there because the failure it catches is silent. Editing
 leaves a schema that is missing the change; `Database.Migrate()` still starts
 cleanly against it, and the first query is where it goes wrong.
 
-That last line runs both projects, not only the fast one. Twenty-six of the forty-two
+That last line runs both projects, not only the fast one. Twenty-seven of the forty-five
 integration tests need no launcher — among them every untrusted-issuer refusal, which is
-the app's central security property — and the sixteen that do skip themselves. The whole
+the app's central security property — and the eighteen that do skip themselves. The whole
 job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the
 container first. Because it runs the whole suite, that job is also where the coverage
-floor lives — currently 93%, against a measured 96.8%. The gap is slack, not laxity:
+floor lives — currently 93%, against a measured 97.2%. The gap is slack, not laxity:
 the job reaches a public sandbox that can be reseeded, and a patient turning up without
 a phone number should not read as a regression. Because those tests skip themselves when `SMART_LAUNCHER_URL`
 answers nothing, a container that failed to start would leave the job green while
