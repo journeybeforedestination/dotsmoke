@@ -340,7 +340,8 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         var state = Hidden(pauseHtml, "State");
 
         // The exchange is a Razor Pages POST, so it is antiforgery-protected: the token in
-        // the form only counts alongside the cookie that came with the page carrying it.
+        // the form only counts alongside the cookie that came with the page carrying it,
+        // which the client's jar is already holding.
         using var exchange = new HttpRequestMessage(HttpMethod.Post, "/learn/callback")
         {
             Content = new FormUrlEncodedContent(
@@ -355,7 +356,6 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
                 }
             ),
         };
-        exchange.Headers.Add("Cookie", AntiforgeryCookie(pause));
 
         using var exchanged = await client.SendAsync(
             exchange,
@@ -366,8 +366,19 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
             $"The exchange ended at {(int)exchanged.StatusCode}."
         );
 
+        // The exchange establishes a session and redirects to a URL naming the launch, so
+        // the state that got us here is spent and the walkthrough carries on by launch id.
+        var landed = exchanged.RequestMessage!.RequestUri!;
+        Assert.Contains("id=", landed.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("state=", landed.Query, StringComparison.Ordinal);
+
+        var tokenPage = await exchanged.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken
+        );
+        Assert.Contains("The session this launch opened", tokenPage);
+
         using var identity = await client.GetAsync(
-            $"/learn/user?state={Uri.EscapeDataString(state)}",
+            new Uri($"/learn/user{landed.Query}", UriKind.Relative),
             TestContext.Current.CancellationToken
         );
         var html = await identity.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -380,12 +391,6 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     }
 
     // ---- Helpers ----------------------------------------------------------
-
-    private static string AntiforgeryCookie(HttpResponseMessage response) =>
-        string.Join(
-            "; ",
-            response.Headers.GetValues("Set-Cookie").Select(cookie => cookie.Split(';')[0])
-        );
 
     /// <summary>Reads a hidden form input the narrated pause carries forward.</summary>
     private static string Hidden(string html, string name)

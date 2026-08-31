@@ -3,15 +3,13 @@ using Microsoft.Extensions.Caching.Memory;
 namespace SmartOnFhirDemo;
 
 /// <summary>
-/// Everything that outlives a request: a launch in flight, the finished transcript the
-/// narrated launch is still walking through, and — since the summary became a page you
-/// can come back to — the established launches a browser is holding open.
+/// The two things that outlive a request: a launch in flight, and a launch that completed.
 ///
 /// A launch in flight holds the PKCE verifier, which is why it is claimed rather than read:
-/// it is spent by the token exchange and must not survive it. A transcript holds no
-/// credential at all — <see cref="SmartLaunch"/> removes the access token before returning
-/// anything that can reach here — but it does hold patient data, which is why it expires.
-/// An established launch holds both, and expires when the EHR said the token does.
+/// it is spent by the token exchange and must not survive it. An established launch holds
+/// the access token and the account of the launch that the pages render — both halves of
+/// what the plain summary and the narrated walkthrough each need — and expires when the
+/// EHR said the token does.
 ///
 /// This stays <see cref="IMemoryCache"/> rather than becoming ASP.NET's session: ISession
 /// stores byte arrays, so a launch context would have to be serialised, and this is
@@ -41,19 +39,6 @@ public static class LaunchCache
         cache.Remove(Smart.CacheKey(state!));
         return launch;
     }
-
-    public static void RememberTranscript(
-        this IMemoryCache cache,
-        string state,
-        CallbackOutcome.Completed completed
-    ) => cache.Set(Smart.TranscriptKey(state), completed, Lifetime);
-
-    /// <summary>The finished launch a walkthrough page is reading, or null once it has expired.</summary>
-    public static CallbackOutcome.Completed? Transcript(this IMemoryCache cache, string? state) =>
-        string.IsNullOrEmpty(state) ? null
-        : cache.TryGetValue(Smart.TranscriptKey(state), out CallbackOutcome.Completed? completed)
-            ? completed
-        : null;
 
     // ---- Established launches ---------------------------------------------
 

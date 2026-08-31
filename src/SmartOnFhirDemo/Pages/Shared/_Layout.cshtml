@@ -26,11 +26,13 @@
         details { margin-top: 2rem; }
         summary { cursor: pointer; opacity: .7; }
 
-        /* The seven stops, and which one you are on. A row rather than a sentence,
-           because "how much is left" is a question you answer by looking. */
+        /* The stops, and which one you are on. A row rather than a sentence, because
+           "how much is left" is a question you answer by looking. The columns are
+           generated rather than counted, so adding a step does not need a number here. */
         .progress {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-auto-flow: column;
+            grid-auto-columns: 1fr;
             list-style: none;
             margin: 0 0 3rem;
             padding: 0;

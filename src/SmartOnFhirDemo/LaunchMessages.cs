@@ -41,11 +41,6 @@ public static class LaunchMessages
             : $"This launch is no longer open. Start a new launch for patient {patientId} "
                 + "from the EHR.";
 
-    /// <summary>Only the narrated launch can reach this: the plain one keeps nothing to come back to.</summary>
-    public const string ExpiredWalkthrough =
-        "This walkthrough has expired. It is kept for five minutes after the launch completes, "
-        + "and then discarded along with everything it was showing. Start a new launch from the EHR.";
-
     /// <summary>
     /// The one line the summary pages carry about who is driving the launch. A name when
     /// the app could establish one, and otherwise the reason it could not — never silence,

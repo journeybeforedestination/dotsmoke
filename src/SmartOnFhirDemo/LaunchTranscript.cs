@@ -32,9 +32,9 @@ public sealed record LaunchStep(
 public static class LaunchTranscript
 {
     /// <summary>
-    /// The seven stops in order, as the progress row names them. One word each, because
-    /// seven have to fit across the page; the full titles are on the steps themselves.
-    /// A step's number is its position here.
+    /// The stops in order, as the progress row names them. One word each, because they all
+    /// have to fit across the page; the full titles are on the steps themselves. A step's
+    /// number is its position here.
     /// </summary>
     public static readonly IReadOnlyList<string> StepLabels =
     [
@@ -43,6 +43,7 @@ public static class LaunchTranscript
         "Authorize",
         "Code",
         "Token",
+        "Session",
         "Identity",
         "Patient",
     ];
@@ -272,13 +273,79 @@ public static class LaunchTranscript
     }
 
     /// <summary>
+    /// What the app did with the token, which is the step that exists because the app
+    /// became stateful. Given <see cref="LaunchFacts"/> rather than a
+    /// <see cref="LaunchContext"/>: this file is handed nothing that names a credential,
+    /// and the point of the step is that the reader cannot be shown one either.
+    /// </summary>
+    public static LaunchStep TheSessionItStarts(LaunchFacts facts) =>
+        new(
+            6,
+            "The session this launch opened",
+            "The token has to outlive the request that fetched it now — the summary is a page "
+                + "you can come back to, and it reads on from there. So rather than being spent "
+                + "and dropped, this launch was filed against your browser, and its name put in "
+                + "the URL.",
+            [
+                new StepField(
+                    $"Set-Cookie: {BrowserSession.CookieName}",
+                    Smart.Withheld,
+                    "HttpOnly, so no script on this page can read it either — which is the whole "
+                        + "of what HttpOnly buys."
+                ),
+                new StepField(
+                    "SameSite",
+                    "Lax",
+                    "Load-bearing: Strict would drop the cookie on the EHR's redirect back in "
+                        + "step 4, and every launch would fail."
+                ),
+                new StepField(
+                    "launch id",
+                    Abbreviate(facts.LaunchId),
+                    "Minted here, not reused from step 3's state — that was sent to the EHR and "
+                        + "sits in its logs."
+                ),
+                new StepField(
+                    "patient",
+                    facts.PatientId,
+                    "Carried beside the launch id so every page says which patient it believes "
+                        + "it shows, and can be corrected."
+                ),
+                new StepField(
+                    "expires",
+                    $"{facts.ExpiresAt:u}",
+                    "The launch dies with the token it holds; expires_in from step 5 is what "
+                        + "sets this."
+                ),
+            ],
+            "What the app now holds, and what names it",
+            string.Join(
+                "\n",
+                [
+                    $"context:{{cookie}}:{{launch id}}",
+                    "    iss           = " + facts.IssuerOrigin,
+                    "    patient       = " + facts.PatientId,
+                    "    fhirUser      = " + (facts.FhirUser ?? "(absent)"),
+                    $"    expires       = {facts.ExpiresAt:u}",
+                    $"    access_token  = {Smart.Withheld}",
+                    "",
+                    "The cookie authenticates and the URL selects, and neither is enough alone.",
+                    "A cookie is per browser; a launch is per patient. Keyed on the cookie",
+                    "alone, a second tab launching a second patient would overwrite the first —",
+                    "and the first tab would then render one patient's data under the other's",
+                    "banner, with no error anywhere.",
+                ]
+            )
+        );
+
+    /// <summary>
     /// Who was driving, and how much of that the app is willing to believe. This is the
     /// step the whole openid/fhirUser exchange exists for.
     /// </summary>
     public static LaunchStep WhoLaunchedThis(CallbackOutcome.Completed completed) =>
         completed.Identity is not { } claims
             ? new LaunchStep(
-                6,
+                7,
                 "Who launched this app",
                 "Nobody, as far as this launch can prove. An app learns who is driving it from "
                     + "an id_token, and this launch has none it can trust.",
@@ -292,7 +359,7 @@ public static class LaunchTranscript
                 ]
             )
             : new LaunchStep(
-                6,
+                7,
                 "Who launched this app",
                 "The token response carried an id_token as well as an access token. The access "
                     + "token says what may be read; this says who is reading.",
@@ -365,7 +432,7 @@ public static class LaunchTranscript
     /// <summary>The one request all of the preceding was arranged to permit.</summary>
     public static LaunchStep ThePatientRead(CallbackOutcome.Completed completed) =>
         new(
-            7,
+            8,
             "Reading the patient",
             "Everything up to here was arranged so that this one request could be made. It is an "
                 + "ordinary FHIR read.",

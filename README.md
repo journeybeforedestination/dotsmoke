@@ -96,8 +96,10 @@ working; it shows rather less about what happens when a scope is refused.
 ## The same launch, narrated
 
 `/learn` is the second launch URL. It runs the identical protocol against the identical
-EHR — same trust check, same discovery, same PKCE, same token exchange — but stops where
-the plain launch redirects, and explains what was exchanged before going on.
+EHR — same trust check, same discovery, same PKCE, same token exchange — and now opens
+the identical session, so it ends on the same summary with the same panels. It differs
+only in stopping where the plain launch redirects, to explain what was exchanged before
+going on. The narration is of this app, not of a simpler one.
 
 ```
 SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
@@ -106,15 +108,23 @@ SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
                                                    ③ what is about to be sent   [continue]
   launcher (provider login → patient/consent) ──302──▶ app /learn/callback?code=…&state=…
   app                                          ──▶ ④ the code, still unspent    [exchange]
-  app ──POST {token}──▶ token used once, discarded, transcript kept
+  app ──POST {token}──▶ the launch is filed against the browser's session
   app  validate id_token; ──GET {iss}/Patient/{id} and {iss}/{fhirUser}  Bearer
-  app  ──302──▶ /learn/token   ──▶ ⑤ what the token endpoint returned           [continue]
-               /learn/user    ──▶ ⑥ who launched it, and how that was proved   [continue]
-               /learn/patient ──▶ ⑦ the FHIR read, and the summary
+  app  ──302──▶ /learn/token?id=…&patient=…
+                 ──▶ ⑤ what the token endpoint returned                        [continue]
+                     ⑥ the session it opened, and what names it
+               /learn/user    ──▶ ⑦ who launched it, and how that was proved   [continue]
+               /learn/patient ──▶ ⑧ the FHIR read, the summary, and the panels
 ```
 
-Every page carries the seven steps across the top, so you can see where you are
+Every page carries the eight steps across the top, so you can see where you are
 and how much is left.
+
+Notice where the URL changes. Up to the exchange the walkthrough is keyed by the OAuth
+`state`, because there is no launch yet — only one in flight. After it, by the launch id
+and the patient, because now there is one. Step ⑥ is about that swap: the same session
+the plain launch opens, narrated, including why a cookie alone would be the wrong shape
+for it.
 
 ## What SMART demands
 
@@ -173,11 +183,11 @@ Design decisions about the .NET side rather than about SMART.
   access token now outlives the request that fetched it, filed against the browser's
   session cookie and expiring when the EHR said it stops working — that is what a
   summary you can return to costs, and it is why the cookie is `HttpOnly` and the
-  launch id is 256 bits of CSPRNG. `/learn`'s exchange still spends its token and
-  drops it, which is why its later steps read a transcript rather than resume a live
-  launch. That transcript is the one thing the narrated launch adds to the cache: no
-  credential, but patient data, so it expires on five minutes, and `/learn` and
-  `/summary` alike send `Cache-Control: no-store`.
+  launch id is 256 bits of CSPRNG. `/learn` opens the same session on the same terms —
+  it narrates this app, so it cannot hold less than this app does — and both it and
+  `/summary` send `Cache-Control: no-store`, because every one of those pages is
+  patient data. There is no second mechanism for the walkthrough: the account it
+  renders is the credential-free half of the launch the summary resolves.
 - **The launching user is projected off the base resource.** `fhirUser` may name a
   Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
   `identifier` with FHIRPath against `Resource` — which handles all four in less code
@@ -200,9 +210,11 @@ Design decisions about the .NET side rather than about SMART.
   and the code that makes FHIR requests ever see one; `LaunchFacts` is the same launch
   with the token taken off, and it is what a page resolves to. `SmartLaunch` still
   redacts the token response into `TokenFacts` before returning, and the token is on no
-  outcome at all — the context it establishes is a separate return, so the narrated
-  launch's transcript cannot acquire one by accident. A page cannot leak what it was
-  never handed, which beats a page that remembers not to print it.
+  outcome at all — the context it establishes is a separate return, so the account the
+  walkthrough renders cannot acquire one by accident. `LaunchTranscript` is handed
+  `LaunchFacts`, which is why step ⑥ can describe the session without being able to
+  show the cookie or the token. A page cannot leak what it was never handed, which
+  beats a page that remembers not to print it.
 - **The explanation is a pure projection.** `LaunchTranscript` turns outcomes into
   ordered steps with their fields, payloads and prose. It does no I/O and reaches
   nothing but what it is given, so the narrated launch is readable and reviewable in

@@ -1,13 +1,17 @@
 @page "/learn/token"
 @model SmartOnFhirDemo.Pages.Learn.TokenModel
 @{
-    ViewData["Title"] = "The token response";
+    ViewData["Title"] = "The token, and the session it opens";
 }
 
-<partial name="_Progress" model="new[] { Model.Step.Number }" />
+<partial name="_Progress" model="Model.Steps.Select(step => step.Number).ToArray()" />
 
-<partial name="_Step" model="Model.Step" />
+@foreach (var step in Model.Steps)
+{
+    <partial name="_Step" model="step" />
+}
 
 <p class="next">
-    <a class="button" asp-page="/Learn/User" asp-route-state="@Model.State">Who launched it &rarr;</a>
+    <a class="button" asp-page="/Learn/User"
+       asp-route-id="@Model.LaunchId" asp-route-patient="@Model.PatientId">Who launched it &rarr;</a>
 </p>

@@ -8,7 +8,8 @@ namespace SmartOnFhirDemo.Pages.Learn;
 /// same trust check, the same discovery, the same authorization request — and then stops
 /// to explain it instead of redirecting. The launch itself is real; only the pause is new.
 /// </summary>
-public class IndexModel(SmartLaunch smart, IMemoryCache cache) : LearnPage(cache)
+public class IndexModel(SmartLaunch smart, IMemoryCache cache, TimeProvider clock)
+    : LearnPage(cache, clock)
 {
     public IReadOnlyList<LaunchStep> Steps { get; private set; } = [];
 

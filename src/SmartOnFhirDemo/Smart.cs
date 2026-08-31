@@ -165,13 +165,6 @@ public static class Smart
     /// </summary>
     public static string ContextKey(string sid, string launchId) => $"context:{sid}:{launchId}";
 
-    /// <summary>
-    /// Cache key for a finished launch the learn pages are still walking through. A
-    /// separate namespace from <see cref="CacheKey"/>, which the same state already
-    /// occupies while the launch is in flight.
-    /// </summary>
-    public static string TranscriptKey(string state) => $"transcript:{state}";
-
     /// <summary>Stands in for a value that is deliberately not shown.</summary>
     public const string Withheld = "(withheld)";
 
