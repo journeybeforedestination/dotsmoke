@@ -11,10 +11,17 @@ namespace SmartOnFhirDemo.IntegrationTests;
 public sealed class LauncherFixture : AppFixture, IAsyncLifetime
 {
     private string? _patientId;
+    private string? _otherPatientId;
     private string? _providerId;
 
     /// <summary>A patient the launcher's FHIR server actually holds, read at start-up.</summary>
     public string PatientId => Discovered(_patientId);
+
+    /// <summary>
+    /// A second, different patient. Two open patients in one browser is the case launch
+    /// isolation exists for, and it cannot be tested with one.
+    /// </summary>
+    public string OtherPatientId => Discovered(_otherPatientId);
 
     /// <summary>
     /// A practitioner to launch as. Needed because the app asks for <c>openid</c>: the
@@ -34,23 +41,33 @@ public sealed class LauncherFixture : AppFixture, IAsyncLifetime
 
         using var http = new HttpClient();
 
-        _patientId = await FirstIdAsync(http, "Patient");
-        _providerId = await FirstIdAsync(http, "Practitioner");
+        var patients = await IdsAsync(http, "Patient", count: 2);
+        (_patientId, _otherPatientId) = (patients[0], patients[1]);
+
+        _providerId = (await IdsAsync(http, "Practitioner", count: 1))[0];
     }
 
     /// <summary>
-    /// Reads an id rather than hard-coding one: the public sandbox behind the launcher can
-    /// be reseeded, and no assertion here depends on which record it is.
+    /// Reads ids rather than hard-coding them: the public sandbox behind the launcher can
+    /// be reseeded, and no assertion here depends on which records they are.
     /// </summary>
-    private static async Task<string?> FirstIdAsync(HttpClient http, string resourceType)
+    private static async Task<IReadOnlyList<string?>> IdsAsync(
+        HttpClient http,
+        string resourceType,
+        int count
+    )
     {
-        var bundle = await http.GetStringAsync($"{Launcher.Url}/v/r4/fhir/{resourceType}?_count=1");
+        var bundle = await http.GetStringAsync(
+            $"{Launcher.Url}/v/r4/fhir/{resourceType}?_count={count}"
+        );
 
-        return JsonDocument
-            .Parse(bundle)
-            .RootElement.GetProperty("entry")[0]
-            .GetProperty("resource")
-            .GetProperty("id")
-            .GetString();
+        return
+        [
+            .. JsonDocument
+                .Parse(bundle)
+                .RootElement.GetProperty("entry")
+                .EnumerateArray()
+                .Select(entry => entry.GetProperty("resource").GetProperty("id").GetString()),
+        ];
     }
 }

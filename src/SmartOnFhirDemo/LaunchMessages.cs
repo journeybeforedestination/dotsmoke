@@ -28,6 +28,18 @@ public static class LaunchMessages
     public const string UnknownLaunch =
         "This launch has expired or was already completed. Start a new launch from the EHR.";
 
+    /// <summary>
+    /// What a summary says when its launch will not resolve. Expiry, an unknown launch and
+    /// a page whose patient does not match its launch all land here: they are different
+    /// events, but there is nothing a reader can do differently about any of them. The
+    /// distinction is kept where it can be acted on, in the access log's outcome.
+    /// </summary>
+    public static string Relaunch(string? patientId) =>
+        string.IsNullOrEmpty(patientId)
+            ? UnknownLaunch
+            : $"This launch is no longer open. Start a new launch for patient {patientId} "
+                + "from the EHR.";
+
     /// <summary>Only the narrated launch can reach this: the plain one keeps nothing to come back to.</summary>
     public const string ExpiredWalkthrough =
         "This walkthrough has expired. It is kept for five minutes after the launch completes, "

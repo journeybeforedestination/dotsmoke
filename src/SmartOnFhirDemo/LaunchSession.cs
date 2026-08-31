@@ -47,6 +47,34 @@ public sealed record LaunchFacts(
 public sealed record LaunchView(LaunchFacts Facts, CallbackOutcome.Completed Rendered);
 
 /// <summary>
+/// What came of asking for the launch a page is showing. The reasons are not for the
+/// reader — every one of them means "launch this again from the EHR", which is why the
+/// pages collapse them into one prompt. They are kept apart here because the access log
+/// needs them apart: a token running out is time passing, and a page whose patient does
+/// not match its launch is a safety violation.
+/// </summary>
+public abstract record LaunchResolution
+{
+    private LaunchResolution() { }
+
+    public sealed record Resolved(LaunchView View) : LaunchResolution;
+
+    /// <summary>Never issued to this browser, or long enough ago to be gone.</summary>
+    public sealed record Unknown : LaunchResolution;
+
+    /// <summary>The EHR's token has run out, and the launch went with it.</summary>
+    public sealed record Expired : LaunchResolution;
+
+    /// <summary>
+    /// The page says it is showing one patient and the launch says another. This is the
+    /// failure the whole session design exists to make impossible — one patient's data
+    /// under another's banner — so nothing is rendered and a row is written.
+    /// </summary>
+    /// <param name="Claimed">The patient the page believed it was showing.</param>
+    public sealed record PatientMismatch(LaunchFacts Facts, string Claimed) : LaunchResolution;
+}
+
+/// <summary>
 /// The opaque id naming the browser a request came from. It is half of what names a
 /// launch: <b>the cookie authenticates and the URL selects</b>. Neither is a bearer token
 /// on its own — a URL sitting in browser history or a <c>Referer</c> header leaks nothing

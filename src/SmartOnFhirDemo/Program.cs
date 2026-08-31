@@ -83,6 +83,7 @@ app.MapGet(
         HttpContext http,
         SmartLaunch smart,
         IMemoryCache cache,
+        TimeProvider clock,
         CancellationToken ct
     ) =>
     {
@@ -98,9 +99,14 @@ app.MapGet(
         if (outcome is not CallbackOutcome.Completed completed || context is null)
             return Fail(LaunchMessages.For(outcome));
 
-        cache.RememberLaunch(BrowserSession.Establish(http), context, completed);
+        cache.RememberLaunch(BrowserSession.Establish(http), context, completed, clock);
 
-        return Results.Redirect($"/summary?id={Uri.EscapeDataString(context.LaunchId)}");
+        // The patient goes in the URL so every page after this says which one it believes
+        // it is showing, and can be told it is wrong.
+        return Results.Redirect(
+            $"/summary?id={Uri.EscapeDataString(context.LaunchId)}"
+                + $"&patient={Uri.EscapeDataString(context.PatientId)}"
+        );
     }
 );
 

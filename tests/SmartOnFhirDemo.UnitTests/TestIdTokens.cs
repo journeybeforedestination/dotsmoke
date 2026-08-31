@@ -77,9 +77,4 @@ internal static class TestIdTokens
             }
         );
     }
-
-    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
-    }
 }

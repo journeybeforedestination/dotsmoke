@@ -61,70 +61,76 @@ public static class LaunchCache
     /// Files a finished launch against the browser that started it. The credential and the
     /// account of the launch are stored as one entry so they cannot outlive each other, and
     /// the entry expires when the EHR said the token stops working.
+    ///
+    /// As a lifetime rather than a moment, because the cache sweeps on the system clock
+    /// while everything else here reads the injected one. They are the same clock in a
+    /// deployment and different clocks under a test, and a duration means the same to both.
     /// </summary>
     public static void RememberLaunch(
         this IMemoryCache cache,
         string sid,
         LaunchContext context,
-        CallbackOutcome.Completed rendered
-    ) =>
-        cache.Set(
-            Smart.ContextKey(sid, context.LaunchId),
-            new EstablishedLaunch(context, rendered),
-            context.ExpiresAt
-        );
-
-    /// <summary>
-    /// The live launch a request names, credential included — for the code that makes FHIR
-    /// requests with it, and for nothing else. Null unless the cookie, the URL and the
-    /// clock all agree.
-    /// </summary>
-    public static LaunchContext? Context(
-        this IMemoryCache cache,
-        string? sid,
-        string? launchId,
-        TimeProvider clock
-    ) => cache.Established(sid, launchId, clock)?.Context;
-
-    /// <summary>
-    /// The same launch as a page may know it. The expiry is checked here against the
-    /// injected clock rather than left to the cache's own housekeeping, so a launch is
-    /// gone the moment its token is rather than whenever the entry is next swept.
-    /// </summary>
-    public static LaunchView? View(
-        this IMemoryCache cache,
-        string? sid,
-        string? launchId,
-        TimeProvider clock
-    ) =>
-        cache.Established(sid, launchId, clock) is { } launch
-            ? new LaunchView(launch.Context.Facts, launch.Rendered)
-            : null;
-
-    private static EstablishedLaunch? Established(
-        this IMemoryCache cache,
-        string? sid,
-        string? launchId,
+        CallbackOutcome.Completed rendered,
         TimeProvider clock
     )
     {
-        // Both, or nothing. The cookie says which browser, the launch id says which of
-        // that browser's launches, and neither answers on its own.
-        if (string.IsNullOrEmpty(sid) || string.IsNullOrEmpty(launchId))
-            return null;
+        // An EHR that hands back an already-expired token gets no launch rather than one
+        // that cannot be resolved. The reader sees the same prompt either way.
+        if (context.ExpiresAt - clock.GetUtcNow() is not { Ticks: > 0 } lifetime)
+            return;
 
-        return
-            cache.TryGetValue(Smart.ContextKey(sid, launchId), out EstablishedLaunch? launch)
-            && launch?.Context.ExpiresAt > clock.GetUtcNow()
-            ? launch
-            : null;
+        cache.Set(
+            Smart.ContextKey(sid, context.LaunchId),
+            new EstablishedLaunch(context, rendered),
+            lifetime
+        );
+    }
+
+    /// <summary>
+    /// The launch a page is asking for, or the reason there is not one. Three values have
+    /// to agree: the cookie says which browser, the id says which of that browser's
+    /// launches, and the patient id says what the page believes it is showing. The last is
+    /// a parameter rather than a check a caller remembers to make, because forgetting it
+    /// is the whole failure mode.
+    /// </summary>
+    public static LaunchResolution Resolve(
+        this IMemoryCache cache,
+        string? sid,
+        string? launchId,
+        string? patientId,
+        TimeProvider clock
+    )
+    {
+        if (
+            string.IsNullOrEmpty(sid)
+            || string.IsNullOrEmpty(launchId)
+            || string.IsNullOrEmpty(patientId)
+        )
+            return new LaunchResolution.Unknown();
+
+        if (
+            !cache.TryGetValue(Smart.ContextKey(sid, launchId), out EstablishedLaunch? launch)
+            || launch is null
+        )
+            return new LaunchResolution.Unknown();
+
+        // Against the injected clock rather than left to the cache's own housekeeping, so a
+        // launch is gone the moment its token is rather than whenever the entry is swept.
+        // Once it has been swept this is unreachable and an expired launch reads as an
+        // unknown one, which is honest: by then the app has nothing left to tell them apart.
+        if (launch.Context.ExpiresAt <= clock.GetUtcNow())
+            return new LaunchResolution.Expired();
+
+        if (!string.Equals(launch.Context.PatientId, patientId, StringComparison.Ordinal))
+            return new LaunchResolution.PatientMismatch(launch.Context.Facts, patientId);
+
+        return new LaunchResolution.Resolved(new LaunchView(launch.Context.Facts, launch.Rendered));
     }
 }
 
 /// <summary>
-/// An established launch as the cache holds it. Not public, because the halves are for
-/// different callers: <see cref="LaunchCache.Context"/> hands the credential to what makes
-/// requests with it, and <see cref="LaunchCache.View"/> hands everything else a projection
-/// with no credential on it.
+/// An established launch as the cache holds it. Not public, because the two halves are for
+/// different callers: the credential is for the code that makes requests with it, and
+/// <see cref="LaunchCache.Resolve"/> hands everything else a projection without one.
 /// </summary>
 internal sealed record EstablishedLaunch(LaunchContext Context, CallbackOutcome.Completed Rendered);

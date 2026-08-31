@@ -21,12 +21,13 @@ SMART Launcher ──GET /launch?iss=…&launch=…──▶ app
   app ──GET {iss}/Patient/{id}   Bearer──▶ Patient
   app ──GET {iss}/{fhirUser}     Bearer──▶ Practitioner
   app  file the launch against the browser's session cookie
-  app ──302──▶ /summary?id={launchId}   ──▶ the summary, and anything read after it
+  app ──302──▶ /summary?id={launchId}&patient={id}   ──▶ the summary
 ```
 
 `/callback` renders nothing. It exchanges, files what it got against the browser, and
 sends the reader to a URL that names the launch — which takes the authorization code
-out of the address bar, and stops a refresh from re-sending a code already spent.
+out of the address bar, and stops a refresh from re-sending a code already spent. The
+patient rides along in that URL so every page says which one it believes it is showing.
 
 ## Running it
 
@@ -149,6 +150,16 @@ Design decisions about the .NET side rather than about SMART.
   `identifier` with FHIRPath against `Resource` — which handles all four in less code
   than handling one would take alone. It keeps a name's `prefix`, because "Dr.
   Albertine Orn" is most of how a clinician is addressed.
+- **Two launches in one browser stay apart.** A cookie is per browser; a launch is per
+  patient. So the session is a map from launch id to context rather than a single slot:
+  a second tab launching a second patient adds a launch instead of replacing one. Get
+  that wrong and the failure has one specific shape — the first tab, still showing
+  patient 123's banner, asks for more and is handed patient 456's data, silently, with
+  no error anywhere. On top of that, every page carries the patient it believes it is
+  showing and is refused if the launch disagrees. An expired launch and a mismatched one
+  land on the same re-launch prompt, because there is nothing a reader can do
+  differently about either; the access log keeps them apart, because one is time passing
+  and the other is a safety violation.
 - **A credential never reaches a page model.** A summary you can come back to needs
   the access token to outlive the request that fetched it, so the old rule — that
   credentials are removed where they arrive — cannot hold as written. What replaces it
@@ -227,8 +238,8 @@ dotnet test --no-build --coverage --coverage-settings coverage.config \
 ```
 
 That last line runs both projects, not only the fast one. Twenty-six of the
-thirty-seven integration tests need no launcher — among them every untrusted-issuer
-refusal, which is the app's central security property — and the eleven that do skip
+thirty-nine integration tests need no launcher — among them every untrusted-issuer
+refusal, which is the app's central security property — and the thirteen that do skip
 themselves. The whole job stays offline.
 
 The launcher-bound tests run in a second job, nightly and on demand, which starts the

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,10 +8,10 @@ namespace SmartOnFhirDemo.Pages;
 
 /// <summary>
 /// Where a launch lands, and — unlike the callback it replaced — a page you can come back
-/// to. It renders nothing it fetches: the launch was established at the callback, and this
-/// resolves it from the two values that name it.
+/// to. It fetches nothing: the launch was established at the callback, and this resolves
+/// it from the three values that name it.
 /// </summary>
-public class SummaryModel(IMemoryCache cache, TimeProvider clock) : PageModel
+public class SummaryModel(IMemoryCache cache, AccessLog log, TimeProvider clock) : PageModel
 {
     public PatientSummary Summary { get; private set; } = default!;
 
@@ -19,18 +20,58 @@ public class SummaryModel(IMemoryCache cache, TimeProvider clock) : PageModel
     /// <summary>Who started this launch, or why the app cannot say.</summary>
     public string WhoLaunchedIt { get; private set; } = "";
 
-    public IActionResult OnGet(string? id)
+    /// <param name="patient">
+    /// The patient this page believes it is showing. Carried so the server can disagree:
+    /// rendering one patient under another's banner is the failure the session design
+    /// exists to prevent, and a page that never says what it thinks it is showing cannot
+    /// be caught doing it.
+    /// </param>
+    public async Task<IActionResult> OnGetAsync(string? id, string? patient, CancellationToken ct)
     {
-        // The cookie says which browser; the id says which of that browser's launches.
-        // What comes back is a LaunchFacts and the account to render — never the token.
-        if (cache.View(BrowserSession.Current(HttpContext), id, clock) is not { } view)
-            return RedirectToPage("/Error", new { message = LaunchMessages.UnknownLaunch });
+        var resolution = cache.Resolve(BrowserSession.Current(HttpContext), id, patient, clock);
 
-        Summary = view.Rendered.Summary;
-        RawJson = view.Rendered.RawJson;
-        WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(view.Rendered);
-        return Page();
+        switch (resolution)
+        {
+            case LaunchResolution.Resolved(var view):
+                Summary = view.Rendered.Summary;
+                RawJson = view.Rendered.RawJson;
+                WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(view.Rendered);
+                return Page();
+
+            case LaunchResolution.PatientMismatch(var facts, var claimed):
+                // Unlike an expiry, this is worth knowing happened at all.
+                await log.RecordAsync(Refused(facts, claimed), ct);
+                return Relaunch(patient);
+
+            case LaunchResolution.Unknown
+            or LaunchResolution.Expired:
+                return Relaunch(patient);
+
+            default:
+                throw new UnreachableException($"{resolution.GetType().Name} is not a resolution.");
+        }
     }
+
+    /// <summary>
+    /// A read that was refused before anything was asked of the EHR. The patient recorded
+    /// is the one the page claimed rather than the one the launch holds, because the
+    /// question this row answers is whose chart someone was about to be shown.
+    /// </summary>
+    private AccessLogEntry Refused(LaunchFacts facts, string claimed) =>
+        new(
+            clock.GetUtcNow(),
+            facts.IssuerOrigin,
+            claimed,
+            facts.FhirUser,
+            "Patient",
+            $"Patient/{claimed}",
+            AccessOutcome.LaunchMismatch,
+            // Nothing was sent, so there is no status to report.
+            Status: null
+        );
+
+    private RedirectToPageResult Relaunch(string? patient) =>
+        RedirectToPage("/Error", new { message = LaunchMessages.Relaunch(patient) });
 
     /// <summary>
     /// This URL is stable and revisitable now, which the one-shot callback was not. That

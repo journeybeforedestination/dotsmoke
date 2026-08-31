@@ -32,12 +32,28 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// <summary>Runs a whole launch — discovery, authorize, token, patient read — as one GET.</summary>
     private async Task<string> LaunchAsync(string authError = "")
     {
-        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId, authError);
+        using var client = launcher.CreateChainClient();
+
+        var (_, html) = await LaunchAsync(client, launcher.PatientId, authError);
+        return html;
+    }
+
+    /// <summary>
+    /// The same launch down a client the caller owns, so two launches can share a cookie
+    /// jar and be two tabs of one browser. Returns where the launch landed as well as what
+    /// it rendered: that URL is the launch's name, and going back to it is the point.
+    /// </summary>
+    private async Task<(Uri Landed, string Html)> LaunchAsync(
+        HttpClient client,
+        string patientId,
+        string authError = ""
+    )
+    {
+        var launch = LaunchParams.Encode(patientId, launcher.ProviderId, authError);
         var url =
             $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
 
-        using var client = launcher.CreateChainClient();
         using var response = await client.GetAsync(url);
 
         Assert.True(
@@ -45,7 +61,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
             $"The launch ended at {(int)response.StatusCode}."
         );
 
-        return await response.Content.ReadAsStringAsync();
+        return (response.RequestMessage!.RequestUri!, await response.Content.ReadAsStringAsync());
     }
 
     // ---- The happy path ---------------------------------------------------
@@ -94,6 +110,61 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         // to inject markup into the page that displays it.
         Assert.Contains("&quot;resourceType&quot;: &quot;Patient&quot;", html);
     }
+
+    // ---- Two open patients ------------------------------------------------
+    //
+    // The end-to-end proof, and it only runs where a launcher does — which is the nightly
+    // job, not a pull request. The tests standing guard on every push are the ones in
+    // LaunchSessionTests; these are what say the guarantee survives two real launches.
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task A_second_launch_does_not_take_the_first_ones_patient_away()
+    {
+        // One client, one cookie jar: two tabs of one browser. If the session held a
+        // single launch, the second would overwrite the first and the first tab would
+        // then render the second patient under the first patient's banner.
+        using var client = launcher.CreateChainClient();
+
+        var (first, firstHtml) = await LaunchAsync(client, launcher.PatientId);
+        var (second, _) = await LaunchAsync(client, launcher.OtherPatientId);
+
+        Assert.NotEqual(first, second);
+
+        using var again = await client.GetAsync(first, TestContext.Current.CancellationToken);
+        Assert.True(again.IsSuccessStatusCode, $"Going back ended at {(int)again.StatusCode}.");
+
+        var againHtml = await again.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(FieldValue(firstHtml, "Name"), FieldValue(againHtml, "Name"));
+        Assert.Equal(FieldValue(firstHtml, "MRN"), FieldValue(againHtml, "MRN"));
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task A_summary_claiming_the_wrong_patient_renders_nothing()
+    {
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+
+        // The same launch, told it is showing somebody else. Every value but one is the
+        // one the app itself issued, which is what makes this a check rather than a guess.
+        var claimed = new Uri(
+            landed.GetLeftPart(UriPartial.Path)
+                + $"?id={Uri.EscapeDataString(LaunchId(landed))}"
+                + $"&patient={Uri.EscapeDataString(launcher.OtherPatientId)}"
+        );
+
+        using var response = await client.GetAsync(claimed, TestContext.Current.CancellationToken);
+        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("This launch is no longer open", html);
+        Assert.DoesNotContain("<dt>MRN</dt>", html);
+    }
+
+    private static string LaunchId(Uri summary) =>
+        Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(summary.Query)["id"]!;
 
     // ---- Failures the launcher can simulate for real ----------------------
 

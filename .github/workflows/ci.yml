@@ -49,7 +49,7 @@ jobs:
         run: dotnet build --no-restore -warnaserror
 
       # Both projects. Twenty-six of the integration tests need no launcher — among
-      # them every untrusted-issuer refusal — and the eleven that do skip themselves.
+      # them every untrusted-issuer refusal — and the thirteen that do skip themselves.
       - name: Test
         run: >
           dotnet test --no-build
