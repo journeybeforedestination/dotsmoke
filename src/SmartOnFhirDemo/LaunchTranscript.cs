@@ -11,6 +11,7 @@ public sealed record StepField(string Label, string Value, string Note = "");
 /// payload they were carried in.
 /// </summary>
 public sealed record LaunchStep(
+    int Number,
     string Title,
     string Explanation,
     IReadOnlyList<StepField> Fields,
@@ -23,9 +24,29 @@ public sealed record LaunchStep(
 /// and reaches nothing but what it is handed, and what it is handed has already had its
 /// credentials removed by <see cref="SmartLaunch"/>. The prose lives here rather than in
 /// the pages so that it can be read, reviewed and tested in one place.
+///
+/// A note is one sentence. The reader is looking at a live launch, and a paragraph per
+/// field buries the value it is meant to be explaining — what a thing is and why it
+/// matters, then stop. Step 4's code is the one deliberate exception.
 /// </summary>
 public static class LaunchTranscript
 {
+    /// <summary>
+    /// The seven stops in order, as the progress row names them. One word each, because
+    /// seven have to fit across the page; the full titles are on the steps themselves.
+    /// A step's number is its position here.
+    /// </summary>
+    public static readonly IReadOnlyList<string> StepLabels =
+    [
+        "Launch",
+        "Discovery",
+        "Authorize",
+        "Code",
+        "Token",
+        "Identity",
+        "Patient",
+    ];
+
     /// <summary>
     /// Everything that happens before the browser leaves for the EHR: the two parameters
     /// that arrived, the document discovery fetched, and the request about to be made.
@@ -37,33 +58,30 @@ public static class LaunchTranscript
         return
         [
             new LaunchStep(
-                "1 · What the EHR sent",
-                "The EHR opened this URL in your browser. Two query parameters are the whole "
-                    + "of what it told the app — everything else below, the app had to work out "
-                    + "for itself.",
+                1,
+                "What the EHR sent",
+                "The EHR opened this URL in your browser. Two query parameters are the whole of "
+                    + "what it told the app.",
                 [
                     new StepField(
                         "iss",
                         prepared.Session.Iss,
-                        "The EHR's FHIR base URL. It arrived as a query parameter, so anyone can "
-                            + "propose one; this app checked it against an allowlist before making a "
-                            + "single request to it. Unchecked, iss is a server-side request forgery, "
-                            + "an open redirect, and a way to harvest authorization codes."
+                        "The EHR's FHIR base URL, checked against an allowlist before the app "
+                            + "makes a single request to it."
                     ),
                     new StepField(
                         "launch",
                         Abbreviate(authorize["launch"]),
                         "An opaque handle to the EHR's session — which patient, which encounter, "
-                            + "which user. The app never decodes it and never needs to. It hands it "
-                            + "straight back in the next request, and the EHR restores the context."
+                            + "which user — handed straight back untouched."
                     ),
                 ]
             ),
             new LaunchStep(
-                "2 · What the app discovered",
-                "The app knows nothing about this EHR's OAuth setup, and is not configured with "
-                    + "it. SMART puts the answer at a fixed path beneath the FHIR base URL, so one "
-                    + "request turns an issuer into a set of endpoints.",
+                2,
+                "What the app discovered",
+                "The app is not configured with this EHR's OAuth endpoints. SMART puts them at a "
+                    + "fixed path beneath the FHIR base URL, so one request finds them.",
                 [
                     new StepField(
                         "GET",
@@ -79,35 +97,33 @@ public static class LaunchTranscript
                         "token_endpoint",
                         Published(prepared, "token_endpoint"),
                         "Where the app will trade the authorization code for an access token, "
-                            + "server to server, with no browser involved."
+                            + "server to server."
                     ),
                 ],
                 "The full SMART configuration the EHR published",
                 Pretty(prepared.ConfigurationJson)
             ),
             new LaunchStep(
-                "3 · What the app is about to send",
+                3,
+                "What the app is about to send",
                 "An authorization request, built from what discovery returned. Pressing continue "
-                    + "sends your browser to the EHR with exactly these parameters. Everything the "
-                    + "app will later need to prove is decided here.",
+                    + "sends your browser to the EHR with exactly these parameters.",
                 [
                     Param(
                         authorize,
                         "response_type",
-                        "The authorization code flow. The browser carries only a short-lived code; "
-                            + "the token is fetched later, out of the browser's reach."
+                        "The authorization code flow: the browser carries only a short-lived code, "
+                            + "never the token."
                     ),
                     Param(
                         authorize,
                         "client_id",
-                        "How this app identifies itself. It is public — not a secret, and not "
-                            + "what proves anything."
+                        "How this app identifies itself — public, and not what proves anything."
                     ),
                     Param(
                         authorize,
                         "redirect_uri",
-                        "Where the EHR will send your browser back. The EHR checks it against what "
-                            + "was registered, and the same value has to be repeated at the token call."
+                        "Where the EHR will send your browser back, checked against what was registered."
                     ),
                     Param(
                         authorize,
@@ -118,35 +134,33 @@ public static class LaunchTranscript
                     Param(
                         authorize,
                         "scope",
-                        "What the app is asking for. The EHR may grant less, and the app finds out "
-                            + "what it actually got in the token response."
+                        "What the app is asking for — the EHR may grant less."
                     ),
                     Param(
                         authorize,
                         "state",
-                        note: "32 random bytes, minted for this launch alone. It ties the callback back "
-                            + "to this launch and nothing else — the defence against a forged callback.",
+                        note: "32 random bytes tying the callback back to this launch, and the "
+                            + "defence against a forged one.",
                         abbreviate: true
                     ),
                     Param(
                         authorize,
                         "aud",
-                        "The FHIR server this token is for. Binding the token to one server is what "
-                            + "stops a leaked one being replayed against a different EHR."
+                        "The FHIR server this token is for, so a leaked one cannot be replayed "
+                            + "against a different EHR."
                     ),
                     Param(
                         authorize,
                         "code_challenge",
-                        note: "The SHA-256 of a random verifier the app generated a moment ago. The "
-                            + "verifier itself never leaves this server, and redeeming the code will "
-                            + "require it. That is PKCE, and it is why the next step is safe.",
+                        note: "The SHA-256 of a secret verifier that never leaves this server, and "
+                            + "that redeeming the code will require.",
                         abbreviate: true
                     ),
                     Param(
                         authorize,
                         "code_challenge_method",
-                        "The hash, never 'plain'. A plain challenge protects nothing from anyone "
-                            + "who can see the request."
+                        "The hash, never 'plain', which would protect nothing from anyone who can "
+                            + "see the request."
                     ),
                 ],
                 "The full authorization URL",
@@ -158,12 +172,13 @@ public static class LaunchTranscript
     /// <summary>The EHR has sent the browser back with a code that has not been spent yet.</summary>
     public static LaunchStep TheCodeCameBack(string code, string state, LaunchState launch) =>
         new(
-            "4 · The EHR sent your browser back",
-            "You have been through the EHR — login, patient selection, consent, or whichever of "
-                + "those it chose to show. It has redirected back to the app's redirect URI with an "
-                + "authorization code. Nothing has been exchanged yet: pressing continue is what "
-                + "makes the token call.",
+            4,
+            "The EHR sent your browser back",
+            "You have been through the EHR, and it has redirected back with an authorization "
+                + "code. Nothing has been exchanged yet.",
             [
+                // The one note left at length: this page exists to make the point, and the
+                // point does not survive being cut to a clause.
                 new StepField(
                     "code",
                     Abbreviate(code),
@@ -175,14 +190,12 @@ public static class LaunchTranscript
                 new StepField(
                     "state",
                     Abbreviate(state),
-                    "Matched against the launch this app has in flight. No match, no exchange — "
-                        + "which is how a callback the app never asked for gets refused."
+                    "Matched against the launch in flight — no match, no exchange."
                 ),
                 new StepField(
                     "POST",
                     launch.TokenEndpoint,
-                    "The token endpoint discovery named in step 2. This request goes from the "
-                        + "server, not from your browser."
+                    "The token endpoint from step 2, called from the server rather than your browser."
                 ),
             ],
             "The form body about to be POSTed",
@@ -204,57 +217,53 @@ public static class LaunchTranscript
         var token = completed.Token;
 
         return new LaunchStep(
-            "5 · What the token endpoint returned",
-            "The exchange succeeded. The EHR checked the code, checked that the verifier hashes "
-                + "to the challenge from step 3, and issued an access token along with the context "
-                + "the launch was carrying all along.",
+            5,
+            "What the token endpoint returned",
+            "The exchange succeeded. The EHR checked the code and the verifier, and issued a "
+                + "token along with the context the launch was carrying.",
             [
                 new StepField(
                     "access_token",
                     Smart.Withheld,
-                    "Present, and deliberately not shown. It is a bearer credential: anyone "
-                        + "holding it is, as far as the FHIR server is concerned, this app. It was "
-                        + "used once — in the request on the next page — and never stored."
+                    "A bearer credential — whoever holds it is this app, as far as the FHIR "
+                        + "server is concerned."
                 ),
                 new StepField(
                     "token_type",
                     token.TokenType ?? "—",
-                    "Always Bearer in SMART. It names how the token is presented on the next request."
+                    "Always Bearer in SMART, and how the token is presented on the next request."
                 ),
                 new StepField(
                     "expires_in",
                     token.ExpiresIn is { } seconds ? $"{seconds} seconds" : "—",
-                    "How long the token would remain valid. This app outlives it by rather less."
+                    "How long the token would remain valid."
                 ),
                 new StepField(
                     "scope",
                     token.Scope ?? "—",
-                    "What the EHR actually granted, which can be narrower than what step 3 asked "
-                        + "for. An app is expected to cope with getting less."
+                    "What the EHR actually granted, which can be narrower than step 3 asked for."
                 ),
                 new StepField(
                     "patient",
                     token.Patient ?? "—",
-                    "The launch context, resolved at last. The opaque launch handle from step 1 "
-                        + "has become a FHIR id the app can read."
+                    "The launch context resolved: the opaque handle from step 1 is now a FHIR id "
+                        + "the app can read."
                 ),
                 new StepField(
                     "encounter",
                     token.Encounter ?? "—",
-                    "The other context the EHR may pass. This app does not ask for it or use it."
+                    "The other context an EHR may pass, which this app does not use."
                 ),
                 new StepField(
                     "need_patient_banner",
                     token.NeedPatientBanner?.ToString() ?? "—",
-                    "Whether the EHR is already showing a patient banner around this app. An "
-                        + "app embedded in an EHR frame is told not to draw a second one."
+                    "Whether the EHR already shows a patient banner, so an embedded app does not "
+                        + "draw a second one."
                 ),
                 new StepField(
                     "smart_style_url",
                     token.SmartStyleUrl ?? "—",
-                    "A stylesheet of the EHR's colours and fonts, so an embedded app can look "
-                        + "like part of it. This app ignores both of these, and shows them "
-                        + "because the step claims to report what the endpoint returned."
+                    "A stylesheet of the EHR's colours, so an embedded app can look like part of it."
                 ),
             ],
             "The token response, with credentials removed",
@@ -264,16 +273,15 @@ public static class LaunchTranscript
 
     /// <summary>
     /// Who was driving, and how much of that the app is willing to believe. This is the
-    /// step the whole openid/fhirUser exchange exists for, and the one place the app
-    /// explains that validating the id_token was optional and it did so anyway.
+    /// step the whole openid/fhirUser exchange exists for.
     /// </summary>
     public static LaunchStep WhoLaunchedThis(CallbackOutcome.Completed completed) =>
         completed.Identity is not { } claims
             ? new LaunchStep(
-                "6 · Who launched this app",
-                "Nobody, as far as this launch can prove. A SMART app learns who is driving "
-                    + "it from an id_token, and this one has none it can trust — so it names "
-                    + "no user rather than showing a claim it did not check.",
+                6,
+                "Who launched this app",
+                "Nobody, as far as this launch can prove. An app learns who is driving it from "
+                    + "an id_token, and this launch has none it can trust.",
                 [
                     new StepField(
                         "id_token",
@@ -284,56 +292,43 @@ public static class LaunchTranscript
                 ]
             )
             : new LaunchStep(
-                "6 · Who launched this app",
-                "The token response carried an id_token as well as an access token. The two "
-                    + "answer different questions: the access token says what may be read, and "
-                    + "this says who is reading. It is a signed JWT, and every claim below was "
-                    + "checked before any of it was believed.",
+                6,
+                "Who launched this app",
+                "The token response carried an id_token as well as an access token. The access "
+                    + "token says what may be read; this says who is reading.",
                 [
                     new StepField(
                         "signature",
                         "verified",
-                        "Checked against the keys the EHR publishes at its jwks_uri, which "
-                            + "discovery named back in step 2. Worth knowing that this was "
-                            + "optional: OIDC Core 3.1.3.7 lets an app skip it when the token "
-                            + "arrives over a direct TLS call to the token endpoint, which is "
-                            + "exactly how this one arrived. The keys are one cached fetch away, "
-                            + "and an app that only checks a signature when it must is one "
-                            + "deployment change away from not checking when it should."
+                        "Checked against the keys the EHR publishes, which discovery named in step 2."
                     ),
                     new StepField(
                         "iss",
                         claims.Issuer,
-                        "Matched against the issuer discovery published — not against the iss "
-                            + "query parameter the launch arrived with. Conflating the two would "
-                            + "let whoever chose that parameter also vouch for the answer."
+                        "Matched against the issuer discovery published, not the iss the launch "
+                            + "arrived with."
                     ),
                     new StepField(
                         "aud",
                         claims.Audience,
-                        "This app's client_id. A token minted for a different app is refused "
-                            + "here, which is what stops one being replayed into this one."
+                        "This app's client_id — a token minted for a different app is refused here."
                     ),
                     new StepField(
                         "exp",
                         $"{claims.ExpiresAt:u}",
-                        "Checked against the clock. Everything above is only true at a moment."
+                        "Checked against the clock, because everything above is only true at a moment."
                     ),
                     new StepField(
                         "sub",
                         Abbreviate(claims.Subject),
-                        "The user's stable, opaque identifier at this EHR. Usable as a key, and "
-                            + "deliberately not usable as a name."
+                        "The user's stable, opaque identifier at this EHR — usable as a key, not "
+                            + "as a name."
                     ),
                     new StepField(
                         "fhirUser",
                         claims.FhirUser ?? "—",
-                        "A reference to the user as a FHIR resource — the claim that turns an "
-                            + "identity into something readable. SMART says it SHOULD be an "
-                            + "absolute URL; this EHR returns a relative one, so the app resolves "
-                            + "it against the launch's own FHIR server. An absolute reference to "
-                            + "any other origin is refused rather than followed, because reading "
-                            + "it would send this access token somewhere it does not belong."
+                        "A reference to the user as a FHIR resource, which is what turns an "
+                            + "identity into something readable."
                     ),
                     WhoTheyAre(completed),
                 ],
@@ -357,11 +352,8 @@ public static class LaunchTranscript
             ? new StepField(
                 "the user",
                 user.Name ?? $"an unnamed {user.ResourceType}",
-                $"Read back as a {user.ResourceType} with the same access token as the "
-                    + "patient, which is what the user/Practitioner.read scope was asked for in "
-                    + "step 3. Be aware that this launcher does not actually enforce user/ "
-                    + "scopes — the read would have succeeded without asking. A production EHR "
-                    + "is entitled to refuse it, and this app carries on without a name when it does."
+                $"Read back as a {user.ResourceType} with the same access token, which is what "
+                    + "the user/Practitioner.read scope was asked for in step 3."
             )
             : new StepField(
                 "the user",
@@ -373,9 +365,10 @@ public static class LaunchTranscript
     /// <summary>The one request all of the preceding was arranged to permit.</summary>
     public static LaunchStep ThePatientRead(CallbackOutcome.Completed completed) =>
         new(
-            "7 · Reading the patient",
+            7,
+            "Reading the patient",
             "Everything up to here was arranged so that this one request could be made. It is an "
-                + "ordinary FHIR read, and the access token is the only thing about it that is unusual.",
+                + "ordinary FHIR read.",
             [
                 new StepField(
                     "GET",
@@ -385,14 +378,14 @@ public static class LaunchTranscript
                 new StepField(
                     "Authorization",
                     $"Bearer {Smart.Withheld}",
-                    "The token, presented the way token_type said to. This is the whole of the "
-                        + "app's claim to be allowed to read this record."
+                    "The token, presented as token_type said to — the whole of the app's claim to "
+                        + "read this record."
                 ),
                 new StepField(
                     "Accept",
                     "application/fhir+json",
-                    "Set by the Firely client, which also asks the server for its CapabilityStatement "
-                        + "first to confirm it really speaks the FHIR version this app was built against."
+                    "Set by the Firely client, which also checks the server speaks this FHIR "
+                        + "version first."
                 ),
             ],
             "The Patient resource, exactly as the server returned it",

@@ -26,6 +26,52 @@
         details { margin-top: 2rem; }
         summary { cursor: pointer; opacity: .7; }
 
+        /* The seven stops, and which one you are on. A row rather than a sentence,
+           because "how much is left" is a question you answer by looking. */
+        .progress {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            list-style: none;
+            margin: 0 0 3rem;
+            padding: 0;
+            font-size: .6875rem;
+            text-align: center;
+        }
+        .progress li { position: relative; opacity: .45; }
+        .progress .done, .progress .current { opacity: 1; }
+
+        /* The rail, drawn as each chip's leading half so it never overshoots the row. */
+        .progress li::before {
+            content: "";
+            position: absolute;
+            top: .25rem;
+            right: 50%;
+            width: 100%;
+            border-top: 1px solid currentColor;
+            opacity: .35;
+        }
+        .progress li:first-child::before { content: none; }
+
+        .progress .dot {
+            position: relative;   /* over the rail, not under it */
+            display: block;
+            width: .5rem;
+            height: .5rem;
+            margin: 0 auto .5rem;
+            border: 1px solid currentColor;
+            border-radius: 50%;
+            background: Canvas;   /* hides the rail behind an unfilled dot */
+        }
+        .progress .done .dot { background: currentColor; }
+        .progress .current .dot {
+            background: currentColor;
+            box-shadow: 0 0 0 .1875rem color-mix(in srgb, currentColor 25%, transparent);
+        }
+
+        .progress .n { display: block; font-variant-numeric: tabular-nums; opacity: .6; }
+        .progress .label { display: block; overflow-wrap: anywhere; }
+        .progress .current .label { font-weight: 600; }
+
         /* The narrated launch: a run of steps, each a heading, a paragraph, and a
            label/value table where every value gets a sentence explaining itself. */
         .lead { margin-bottom: 2.5rem; }

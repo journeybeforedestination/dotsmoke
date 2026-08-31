@@ -4,6 +4,8 @@
     ViewData["Title"] = "The token response";
 }
 
+<partial name="_Progress" model="new[] { Model.Step.Number }" />
+
 <partial name="_Step" model="Model.Step" />
 
 <p class="next">

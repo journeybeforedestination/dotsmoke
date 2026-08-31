@@ -1,0 +1,26 @@
+@*
+    Where the reader is in the seven stops, and how many are left. The steps are
+    numbered in the prose, so the row is numbered the same way; a page renders it
+    from the steps it is showing rather than being told its own position, which is
+    why /learn marks three at once.
+*@
+@model IReadOnlyList<int>
+
+@{
+    var current = Model.Min();
+}
+
+<ol class="progress" aria-label="Progress through the launch">
+    @for (var number = 1; number <= LaunchTranscript.StepLabels.Count; number++)
+    {
+        var state = Model.Contains(number) ? "current"
+            : number < current ? "done"
+            : "todo";
+
+        <li class="@state" aria-current="@(state == "current" ? "step" : null)">
+            <span class="dot"></span>
+            <span class="n">@number</span>
+            <span class="label">@LaunchTranscript.StepLabels[number - 1]</span>
+        </li>
+    }
+</ol>

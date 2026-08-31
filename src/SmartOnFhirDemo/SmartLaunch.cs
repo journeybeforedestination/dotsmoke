@@ -402,6 +402,9 @@ public sealed partial class SmartLaunch(
         {
             // Commonly a 403: asking for user/Practitioner.read does not oblige an EHR
             // to grant it, and an app is expected to cope with getting less than it asked.
+            // Not against the SMART App Launcher, though — it does not enforce user/ scopes
+            // at all, so this read succeeds there whether or not the scope was granted, and
+            // a launch against it proves less about scopes than it appears to.
             LogUserReadFailed(ex, fhirUser);
             return (null, $"The EHR would not return {fhirUser} ({(int)ex.Status}).");
         }
