@@ -267,10 +267,25 @@ dotnet tool restore
 dotnet csharpier check .                 # no network, no container, under a second
 dotnet restore --locked-mode
 dotnet build --no-restore -warnaserror
+dotnet ef migrations has-pending-model-changes \
+  --project src/SmartOnFhirDemo --no-build   # the schema still matches the model
 dotnet test --no-build --coverage --coverage-settings coverage.config \
   --coverage-output-format cobertura
 ./.github/coverage.sh                    # merge the two reports, report the rate
 ```
+
+No database is provisioned for any of that, which is most of why SQLite is the
+choice: it is a library in the process rather than a server, so there is no
+container to start and no connection string to hold. The unit tests migrate an
+in-memory database — from the committed migration rather than `EnsureCreated`, so
+what they run against is what would ship — and the integration tests boot the real
+app against a temporary file they delete afterwards. Nothing survives the job, so
+every run builds the schema from scratch.
+
+The migration check is there because the failure it catches is silent. Editing
+`AccessLogEntry` or `OnModelCreating` without running `dotnet ef migrations add`
+leaves a schema that is missing the change; `Database.Migrate()` still starts
+cleanly against it, and the first query is where it goes wrong.
 
 That last line runs both projects, not only the fast one. Twenty-six of the forty-two
 integration tests need no launcher — among them every untrusted-issuer refusal, which is
@@ -419,7 +434,8 @@ Analyzers.
 Three dev-time tools are pinned in `.config/dotnet-tools.json`: `CSharpier` 1.3.0
 (MIT), which formats the source, `dotnet-coverage` 18.10.0 (MIT), which merges the
 two coverage reports into one, and `dotnet-ef` 10.0.11 (MIT), which writes the
-migrations. None of them ships in anything.
+migrations and, in CI, checks they still match the model. None of them ships in
+anything.
 
 ## License
 

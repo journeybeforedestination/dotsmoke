@@ -48,6 +48,15 @@ jobs:
       - name: Build
         run: dotnet build --no-restore -warnaserror
 
+      # A model edited without `dotnet ef migrations add` would be green here for the
+      # wrong reason: the app migrates at start-up, so it starts cleanly against a schema
+      # that is missing the change and fails at the first query instead. This exits
+      # non-zero when the two have drifted apart.
+      - name: Check the migrations still match the model
+        run: >
+          dotnet ef migrations has-pending-model-changes
+          --project src/SmartOnFhirDemo --no-build
+
       # Both projects. Twenty-six of the integration tests need no launcher — among
       # them every untrusted-issuer refusal — and the sixteen that do skip themselves.
       - name: Test
