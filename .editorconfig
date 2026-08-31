@@ -180,6 +180,15 @@ dotnet_naming_rule.parameters_and_locals_are_camel_case.symbols = parameters_and
 dotnet_naming_rule.parameters_and_locals_are_camel_case.style = camel_case
 dotnet_naming_rule.parameters_and_locals_are_camel_case.severity = suggestion
 
+[src/**/Migrations/*.cs]
+
+# `dotnet ef migrations add` writes these and rewrites them on every schema
+# change. Two in-box rules fire on what it generates — a `new[]` in an argument
+# and a using it does not always need — and satisfying either means hand-editing
+# a file the tool owns, only for the edit to be undone by the next migration.
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.IDE0005.severity = none
+
 [tests/**/*.cs]
 
 # Test names here are sentences — A_callback_for_an_unknown_launch_is_refused.

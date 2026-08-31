@@ -138,8 +138,13 @@ public static class Smart
         && Origin(other) is { } candidate
         && string.Equals(origin, candidate, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Scheme, host and port of an absolute http(s) URL, or null if it is neither.</summary>
-    private static string? Origin(string? url) =>
+    /// <summary>
+    /// Scheme, host and port of an absolute http(s) URL, or null if it is neither. Public
+    /// because the access log keys on it for the same reason the trust check compares on
+    /// it: a SMART issuer legitimately carries a path, and the launcher puts the selected
+    /// patient inside that path.
+    /// </summary>
+    public static string? Origin(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
             ? $"{uri.Scheme}://{uri.Host}:{uri.Port}"

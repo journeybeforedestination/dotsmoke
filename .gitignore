@@ -1,3 +1,8 @@
 bin/
 obj/
 TestResults/
+
+# The access log's SQLite database, and the journals it opens beside it.
+app.db
+app.db-shm
+app.db-wal

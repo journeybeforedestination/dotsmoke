@@ -41,6 +41,10 @@ Then at [launch.smarthealthit.org](https://launch.smarthealthit.org/):
 Pick a patient, press **Launch**. `/learn` walks you through the handshake; `/launch`
 does the same thing without stopping and lands on the summary.
 
+The app creates `app.db` beside itself on first run and migrates it on every start.
+That is the access log, and deleting the file loses nothing but the log; point
+`ConnectionStrings:AccessLog` somewhere else to put it elsewhere.
+
 To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
 `appsettings.json` — the app refuses launches from anywhere not on that list:
 
@@ -118,11 +122,14 @@ Design decisions about the .NET side rather than about SMART.
 - **The OAuth handshake is hand-rolled** over `HttpClient`. SMART reveals the
   issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
   around a static `Authority` — fights.
-- **Nothing is persisted.** Only the issuer and PKCE verifier survive the
-  redirect, held in `IMemoryCache` under the OAuth `state` for five minutes — that,
-  and the signing keys an EHR publishes, which are cached for an hour under their
-  own URL because they are public, identical for every launch, and rotate on the
-  order of months. The
+- **The log goes to disk; the credential stays in memory.** The access log is the
+  app's own data rather than the EHR's, and the one thing here that outlives the
+  process: a SQLite file, one table, created by an EF Core migration at start-up.
+  Nothing a launch carries joins it. The issuer and PKCE verifier survive the
+  redirect in `IMemoryCache` under the OAuth `state` for five minutes — that, and
+  the signing keys an EHR publishes, which are cached for an hour under their own
+  URL because they are public, identical for every launch, and rotate on the order
+  of months. The
   access token is used once and discarded, so `/callback` renders in the same
   request that exchanges the code — and so does `/learn`'s exchange, which is why
   its later steps read a transcript rather than resume a live launch. That
@@ -306,10 +313,13 @@ error NU1904: Package 'X' 1.2.3 has a known critical severity vulnerability
 So a newly disclosed advisory can turn a build red with no commit behind it. That
 is the intent — this app handles OAuth credentials and patient data.
 
-Two rules are overridden in `.editorconfig`, each with its reason written beside
-it: `IDE0005` is raised to a warning, because an unused `using` is not a matter of
-taste; and `CA1707` is switched off under `tests/`, where method names are
-sentences rather than identifiers.
+Rules are overridden in `.editorconfig` in three places, each with its reason
+written beside it: `IDE0005` is raised to a warning, because an unused `using` is
+not a matter of taste; `CA1707` is switched off under `tests/`, where method names
+are sentences rather than identifiers; and both `IDE0005` and `CA1861` are switched
+off under `src/**/Migrations/`, which `dotnet ef` writes and rewrites — satisfying
+them there would mean hand-editing a generated file, only for the next migration to
+undo the edit.
 
 ## The pinned toolchain
 
