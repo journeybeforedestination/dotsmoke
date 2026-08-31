@@ -43,22 +43,8 @@ SMART Launcher ──GET /learn?iss=…&launch=…──▶ app
                /learn/patient ──▶ ⑦ the FHIR read, and the summary
 ```
 
-Two of those stops happen inside a live launch rather than a replay: the first, which
-holds the browser before the redirect, and step ④, which holds an authorization code that
-has not been spent. Steps ⑤ to ⑦ read back a transcript of the exchange that the token was
-already removed from, which is what lets them be ordinary linkable pages without the
-launch holding a credential open.
-
-What the pages never show: the PKCE verifier, the access token, and — when the issuer is
-refused — the issuer. What they do show, because you learn nothing otherwise: the granted
-scope, the resolved patient context, the full SMART configuration the EHR published, the
-token response with its credentials replaced, the id_token's claims with the token itself
-withheld, and enough of the authorization code to recognise it. The code is live and unspent at step ④, which is exactly the point being
-made there: without the verifier, which never leaves the server, it cannot be redeemed.
-
-Pausing at step ④ works because the SMART App Launcher issues codes that live five
-minutes. The specification expects "around one minute", so the same pause would often
-fail against a production EHR — which is why `/launch` does not take it.
+Every page carries the seven steps across the top, so you can see where you are
+and how much is left.
 
 ## Running it
 

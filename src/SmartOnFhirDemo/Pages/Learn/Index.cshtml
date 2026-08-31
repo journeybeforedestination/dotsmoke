@@ -4,6 +4,8 @@
     ViewData["Title"] = "The launch, step by step";
 }
 
+<partial name="_Progress" model="Model.Steps.Select(s => s.Number).ToList()" />
+
 <p class="lead">
     This is a real SMART launch from a real EHR, stopped at each point where something
     happened, so you can see what was exchanged and why. Nothing here is simulated —

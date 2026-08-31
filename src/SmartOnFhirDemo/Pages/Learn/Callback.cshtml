@@ -4,6 +4,8 @@
     ViewData["Title"] = "Back from the EHR";
 }
 
+<partial name="_Progress" model="new[] { Model.Step.Number }" />
+
 <partial name="_Step" model="Model.Step" />
 
 @*

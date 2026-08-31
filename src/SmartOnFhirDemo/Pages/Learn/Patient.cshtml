@@ -4,6 +4,8 @@
     ViewData["Title"] = "The patient read";
 }
 
+<partial name="_Progress" model="new[] { Model.Step.Number }" />
+
 <partial name="_Step" model="Model.Step" />
 
 <section class="step">

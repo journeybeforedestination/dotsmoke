@@ -236,26 +236,6 @@ public class LaunchTranscriptTests
     }
 
     [Fact]
-    public void The_identity_step_says_why_validating_the_id_token_was_optional()
-    {
-        var step = LaunchTranscript.WhoLaunchedThis(Identified());
-
-        Assert.Contains("3.1.3.7", step.Fields.Single(f => f.Label == "signature").Note);
-    }
-
-    [Fact]
-    public void The_identity_step_admits_the_launcher_does_not_enforce_user_scopes()
-    {
-        var step = LaunchTranscript.WhoLaunchedThis(Identified());
-
-        // Naming the scope without this would imply an enforcement that is not there.
-        Assert.Contains(
-            "does not actually enforce",
-            step.Fields.Single(f => f.Label == "the user").Note
-        );
-    }
-
-    [Fact]
     public void An_unproved_identity_names_nobody_and_says_why()
     {
         var step = LaunchTranscript.WhoLaunchedThis(
@@ -288,7 +268,37 @@ public class LaunchTranscriptTests
     [Fact]
     public void The_patient_read_is_the_seventh_step_now_that_identity_is_the_sixth()
     {
-        Assert.StartsWith("6 · ", LaunchTranscript.WhoLaunchedThis(Identified()).Title);
-        Assert.StartsWith("7 · ", LaunchTranscript.ThePatientRead(Identified()).Title);
+        Assert.Equal(6, LaunchTranscript.WhoLaunchedThis(Identified()).Number);
+        Assert.Equal(7, LaunchTranscript.ThePatientRead(Identified()).Number);
+    }
+
+    [Fact]
+    public void Every_step_has_a_label_for_the_progress_row()
+    {
+        // The row numbers seven chips whatever the steps say, so a step whose number
+        // outran the labels would render an unnamed one.
+        var numbers = Steps(Prepared())
+            .Select(s => s.Number)
+            .Append(LaunchTranscript.TheCodeCameBack(Code, State, Session).Number)
+            .Append(LaunchTranscript.TheTokenResponse(Completed()).Number)
+            .Append(LaunchTranscript.WhoLaunchedThis(Identified()).Number)
+            .Append(LaunchTranscript.ThePatientRead(Completed()).Number)
+            .ToList();
+
+        Assert.Equal(Enumerable.Range(1, LaunchTranscript.StepLabels.Count), numbers);
+    }
+
+    [Fact]
+    public void A_note_stays_short_enough_to_read_beside_the_value_it_explains()
+    {
+        // The whole point of the trim. Step 4's code is the one deliberate exception:
+        // that page exists to make the PKCE point, which does not survive a clause.
+        var notes = Steps(Prepared())
+            .Concat([LaunchTranscript.TheTokenResponse(Completed())])
+            .Concat([LaunchTranscript.WhoLaunchedThis(Identified())])
+            .Concat([LaunchTranscript.ThePatientRead(Completed())])
+            .SelectMany(s => s.Fields);
+
+        Assert.All(notes, note => Assert.InRange(note.Note.Split(' ').Length, 1, 22));
     }
 }

@@ -249,9 +249,6 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         // The claim was followed to a real resource, not merely reported.
         Assert.DoesNotContain("Nobody, as far as this launch can prove", html);
         Assert.Contains("Practitioner", html);
-
-        // And the step makes the point the whole exchange exists to make.
-        Assert.Contains("3.1.3.7", html);
     }
 
     // ---- Helpers ----------------------------------------------------------
