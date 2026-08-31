@@ -324,13 +324,21 @@ than quietly resolving something new.
 
 ## Dependencies
 
-The app has two direct packages: `Hl7.Fhir.R4` 6.4.0 (BSD-3-Clause) for the FHIR
-work, and `Microsoft.IdentityModel.JsonWebTokens` 8.22.0 (MIT) to validate the
-id_token. Everything else is in-box ASP.NET Core.
+The app has three direct packages: `Hl7.Fhir.R4` 6.4.0 (BSD-3-Clause) for the FHIR
+work, `Microsoft.IdentityModel.JsonWebTokens` 8.22.0 (MIT) to validate the id_token,
+and `Microsoft.EntityFrameworkCore.Sqlite` 10.0.11 (MIT) for the access log.
+Everything else is in-box ASP.NET Core.
 
 The second is there rather than hand-rolled deliberately: verifying a JWS against
 a published JWKS is exactly the kind of code that is easy to write and easy to
 write wrongly, and getting it wrong is silent.
+
+The third is EF Core rather than raw ADO.NET over `Microsoft.Data.Sqlite`, which
+would have been one package fewer and would have kept the SQL on the page. The
+migrations are what tipped it: a schema that changes needs versioning, and
+hand-rolling that is the wrong kind of small.
+`Microsoft.EntityFrameworkCore.Design` 10.0.11 (MIT) comes with it, marked
+`PrivateAssets` because it is only what `dotnet ef` builds a model against.
 
 The tests add `xunit.v3`, `Microsoft.AspNetCore.Mvc.Testing` and
 `Microsoft.Testing.Extensions.CodeCoverage`, and nothing else — no mocking library,
@@ -338,9 +346,10 @@ no container library. `global.json` opts `dotnet test` into
 Microsoft.Testing.Platform, which the .NET 10 SDK requires, and pins the SDK; see
 Analyzers.
 
-Two dev-time tools are pinned in `.config/dotnet-tools.json`: `CSharpier` 1.3.0
-(MIT), which formats the source, and `dotnet-coverage` 18.10.0 (MIT), which merges
-the two coverage reports into one. Neither ships in anything.
+Three dev-time tools are pinned in `.config/dotnet-tools.json`: `CSharpier` 1.3.0
+(MIT), which formats the source, `dotnet-coverage` 18.10.0 (MIT), which merges the
+two coverage reports into one, and `dotnet-ef` 10.0.11 (MIT), which writes the
+migrations. None of them ships in anything.
 
 ## License
 
