@@ -53,6 +53,12 @@ The app creates `app.db` beside itself on first run and migrates it on every sta
 That is the access log, and deleting the file loses nothing but the log; point
 `ConnectionStrings:AccessLog` somewhere else to put it elsewhere.
 
+`GET /up` answers 200 and nothing else. It is what a proxy asks before it sends a reader
+here, and `/up` is kamal-proxy's default path, so matching it means a deployment
+configures no health check at all. It stays shallow deliberately: the app migrates its
+database before it serves, so a missing or unwritable volume has already stopped the
+process, and a check that reopened the database every second would re-prove that forever.
+
 `Smart:PublicOrigin` is the address readers reach this app on, and it is required: the
 app is told its origin rather than reading one off the incoming request, so every URL it
 hands an EHR is one a browser can come back to. It ships as `http://localhost:5000`,

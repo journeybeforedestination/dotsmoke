@@ -57,6 +57,14 @@ using (var scope = app.Services.CreateScope())
 app.UseExceptionHandler("/error");
 app.MapRazorPages();
 
+// What a proxy asks before it sends a reader here. The path is kamal-proxy's default, so
+// matching it means a deployment configures no health check at all.
+//
+// Shallow on purpose: the migration above runs before the app serves, so a volume that is
+// missing or unwritable has already stopped the container, and a check that reopened the
+// database every second would re-prove that forever.
+app.MapGet("/up", () => Results.Ok());
+
 // Step 1 of the SMART EHR launch. The EHR opens this URL in the user's browser with
 // the FHIR base URL (iss) and an opaque launch id. SmartLaunch does the protocol; this
 // endpoint holds the launch until the EHR redirects back, and turns the outcome into
