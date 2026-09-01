@@ -39,7 +39,8 @@ public class AppFixture : IAsyncDisposable
         );
 
     /// <summary>
-    /// Replaces the shipped allowlist so the tests launch against their own servers.
+    /// Replaces the shipped allowlist so the tests launch against their own servers, and
+    /// tells the app the origin those tests reach it on — it refuses to start without one.
     /// Overriding index 0 also proves the app reads the list from configuration.
     /// </summary>
     private IEnumerable<KeyValuePair<string, string?>> Settings()
@@ -49,6 +50,7 @@ public class AppFixture : IAsyncDisposable
         if (Launcher.Url is { } launcher)
             yield return new("Smart:TrustedIssuers:1", launcher);
 
+        yield return new("Smart:PublicOrigin", $"http://{AppHost}");
         yield return new("ConnectionStrings:AccessLog", $"Data Source={_database}");
     }
 

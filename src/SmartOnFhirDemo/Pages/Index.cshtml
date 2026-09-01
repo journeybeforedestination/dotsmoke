@@ -1,9 +1,10 @@
 @page "/"
+@using Microsoft.Extensions.Options
+@inject IOptions<SmartOptions> Smart
 @{
     ViewData["Title"] = "SMART on FHIR demo";
-    var origin = $"{Request.Scheme}://{Request.Host}";
-    var learnUrl = $"{origin}/learn";
-    var launchUrl = $"{origin}/launch";
+    var learnUrl = Smart.Value.Url("/learn");
+    var launchUrl = Smart.Value.Url("/launch");
 }
 
 <p>This app has nothing to show on its own — it waits to be launched by an EHR.</p>

@@ -90,7 +90,10 @@ public static class BrowserSession
     /// is no reason for one to exist before there is a launch to put in it, and a browser
     /// arriving here without a cookie is simply one that has not launched before.
     /// </summary>
-    public static string Establish(HttpContext http)
+    /// <param name="secure">
+    /// Whether readers reach this app over TLS, taken from its configured public origin.
+    /// </param>
+    public static string Establish(HttpContext http, bool secure)
     {
         if (Current(http) is { } established)
             return established;
@@ -113,10 +116,13 @@ public static class BrowserSession
                 // the isolation this whole design exists to keep.
                 SameSite = SameSiteMode.Lax,
 
-                // The one place this demo knowingly relaxes: the README has you run it on
-                // http://localhost:5000, and an unconditional Secure would break those
-                // instructions with a failure that names nothing.
-                Secure = http.Request.IsHttps,
+                // Follows the app's configured origin, never this request's scheme. Behind
+                // a proxy that terminates TLS the request arrives as plain http, and
+                // deriving the flag from it would mark the cookie that authenticates a
+                // patient summary as safe to send in clear — silently, on a public host.
+                // On the README's http://localhost:5000 it is false, which is what keeps
+                // those instructions working.
+                Secure = secure,
             }
         );
 

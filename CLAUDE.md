@@ -45,4 +45,18 @@ another launch, silently and with nothing in the log saying so.
 `AccessLogHandler` takes its launch as a constructor argument for exactly this
 reason, and is built at the call site rather than registered.
 
+This app has no forwarded-headers middleware, and adding one would be a regression.
+Behind a TLS-terminating proxy every conventional fix is wrong in its own way:
+kamal-proxy suppresses `X-Forwarded-*` by default when it terminates TLS; since
+ASP.NET Core 8.0.17 the middleware ignores those headers from any proxy not
+explicitly trusted, and its defaults are loopback only, which a proxy in another
+container is not; `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` — the near-universal
+workaround, recommended by published .NET Kamal templates — works by *clearing* the
+trust list; and setting `KnownNetworks` to the Docker bridge CIDR hard-codes a
+Docker-assigned fact into the app, failing as a redirect loop when it drifts.
+`Smart:PublicOrigin` sidesteps all four: the app is told its origin and builds every
+absolute URL and the session cookie's `Secure` flag from it. The failure it prevents
+is not an outage — the launch works either way — but the cookie authenticating a
+patient summary being marked as safe to send in clear, silently.
+
 Comments here say *why*, not *what*. Test names are sentences.
