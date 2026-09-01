@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace SmartOnFhirDemo.Pages.Learn;
 
@@ -9,8 +10,12 @@ namespace SmartOnFhirDemo.Pages.Learn;
 /// exchanges the code, uses the access token once, and keeps only the redacted account
 /// of it for the two pages that follow.
 /// </summary>
-public class CallbackModel(SmartLaunch smart, IMemoryCache cache, TimeProvider clock)
-    : LearnPage(cache, clock)
+public class CallbackModel(
+    SmartLaunch smart,
+    IOptions<SmartOptions> options,
+    IMemoryCache cache,
+    TimeProvider clock
+) : LearnPage(cache, clock)
 {
     public LaunchStep Step { get; private set; } = default!;
 
@@ -60,7 +65,12 @@ public class CallbackModel(SmartLaunch smart, IMemoryCache cache, TimeProvider c
         // The narrated launch establishes a session exactly as the plain one does, because
         // it is narrating the same app. Step 6 is where the reader is told so — and the
         // steps after it read a live launch rather than a keepsake of one.
-        Cache.RememberLaunch(BrowserSession.Establish(HttpContext), context, completed, Clock);
+        Cache.RememberLaunch(
+            BrowserSession.Establish(HttpContext, options.Value.IsSecure),
+            context,
+            completed,
+            Clock
+        );
 
         return RedirectToPage(
             "/Learn/Token",

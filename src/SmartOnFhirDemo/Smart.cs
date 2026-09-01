@@ -28,9 +28,30 @@ public sealed class SmartOptions
 
     /// <summary>
     /// The EHRs this app will accept a launch from. A real app is registered with each
-    /// EHR it serves, so it knows this list up front. An empty list trusts nobody.
+    /// EHR it serves, so it knows this list up front. An empty list trusts nobody, and
+    /// is refused at start-up rather than at launch time.
     /// </summary>
     public string[] TrustedIssuers { get; set; } = ["https://launch.smarthealthit.org"];
+
+    /// <summary>
+    /// This app's own address as the outside world reaches it — scheme, host and port,
+    /// no path. Required, and deliberately without a fallback: every absolute URL the
+    /// app hands out is built from this rather than read off the incoming request, so a
+    /// proxy that terminates TLS on the app's behalf cannot make it describe itself as
+    /// <c>http</c>. See the forwarded-headers trap in CLAUDE.md.
+    /// </summary>
+    public string PublicOrigin { get; set; } = "";
+
+    /// <summary>An absolute URL on this app, from a path beginning with a slash.</summary>
+    public string Url(string path) => $"{PublicOrigin.TrimEnd('/')}{path}";
+
+    /// <summary>
+    /// Whether readers reach this app over TLS, and so whether the session cookie may be
+    /// marked <c>Secure</c>. Read from the configured origin for the same reason the URLs
+    /// are: the incoming request's scheme is the proxy's, not the reader's.
+    /// </summary>
+    public bool IsSecure =>
+        PublicOrigin.StartsWith(Uri.UriSchemeHttps + "://", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -150,9 +171,23 @@ public static class Smart
     /// patient inside that path.
     /// </summary>
     public static string? Origin(string? url) =>
+        Absolute(url) is { } uri ? $"{uri.Scheme}://{uri.Host}:{uri.Port}" : null;
+
+    /// <summary>
+    /// Whether a URL is nothing but an origin: absolute, http(s), and carrying no path,
+    /// query or fragment. What <see cref="SmartOptions.PublicOrigin"/> must be, because
+    /// it is a prefix other URLs are appended to — <c>https://host/app</c> would silently
+    /// yield <c>https://host/app/callback</c>, which is a redirect URI the EHR was never
+    /// registered against.
+    /// </summary>
+    public static bool IsOrigin(string? url) =>
+        Absolute(url) is { } uri && uri.PathAndQuery == "/" && uri.Fragment.Length == 0;
+
+    /// <summary>The URL as a <see cref="Uri"/>, or null unless it is an absolute http(s) one.</summary>
+    private static Uri? Absolute(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri)
         && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-            ? $"{uri.Scheme}://{uri.Host}:{uri.Port}"
+            ? uri
             : null;
 
     /// <summary>Cache key for a launch in flight.</summary>

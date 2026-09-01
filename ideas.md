@@ -64,13 +64,6 @@ gate), which is done — these are what was deliberately left out of it.
 
 ## Demonstrating .NET
 
-- **Fail-fast configuration.** `AddOptions<SmartOptions>().Bind(…).Validate(…)
-  .ValidateOnStart()`. Today a typo'd or empty `TrustedIssuers` starts cleanly
-  and fails at launch time with a message about app registration, which sends you
-  looking in the wrong place. Security config that refuses to boot is the
-  technique, and this app is close to the ideal case for it. No dependencies,
-  small.
-
 - **Typed clients and resilience.** The FHIR reads now go through a named client,
   because the access log has to wrap its handler — but naming it was all that
   bought. It and the other three calls — discovery, the token exchange, the JWKS

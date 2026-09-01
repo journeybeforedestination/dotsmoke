@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using SmartOnFhirDemo;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,9 +26,28 @@ builder.Services.AddScoped<AccessLog>();
 
 // The seam the id_token's lifetime is checked against, so a test can hold the clock still.
 builder.Services.AddSingleton(TimeProvider.System);
-builder.Services.Configure<SmartOptions>(builder.Configuration.GetSection("Smart"));
+
+// Configuration that is wrong should stop the app here rather than surface as a launch
+// failure describing app registration, which sends you looking in the wrong place.
+builder
+    .Services.AddOptions<SmartOptions>()
+    .Bind(builder.Configuration.GetSection("Smart"))
+    .Validate(
+        options => Smart.IsOrigin(options.PublicOrigin),
+        "Smart:PublicOrigin is required, and must be an absolute http(s) URL with no path: "
+            + "this app is told the address readers reach it on rather than inferring one."
+    )
+    .Validate(
+        options => options.TrustedIssuers.Length > 0,
+        "Smart:TrustedIssuers is empty, so no EHR could ever launch this app."
+    )
+    .ValidateOnStart();
 
 var app = builder.Build();
+
+// ValidateOnStart fires when the host starts, which is after the migration below, so a
+// misconfigured app would leave a database behind on its way to refusing to run.
+app.Services.GetRequiredService<IStartupValidator>().Validate();
 
 // Right for a single-instance demo, and wrong anywhere it is not one: with replicas,
 // migrating is a deploy step run once rather than a race between processes starting.
@@ -46,13 +66,13 @@ app.MapGet(
     async (
         string? iss,
         string? launch,
-        HttpRequest request,
+        IOptions<SmartOptions> options,
         SmartLaunch smart,
         IMemoryCache cache,
         CancellationToken ct
     ) =>
     {
-        var redirectUri = $"{request.Scheme}://{request.Host}/callback";
+        var redirectUri = options.Value.Url("/callback");
 
         var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
 
@@ -82,6 +102,7 @@ app.MapGet(
         string? error,
         [FromQuery(Name = "error_description")] string? errorDescription,
         HttpContext http,
+        IOptions<SmartOptions> options,
         SmartLaunch smart,
         IMemoryCache cache,
         TimeProvider clock,
@@ -100,7 +121,12 @@ app.MapGet(
         if (outcome is not CallbackOutcome.Completed completed || context is null)
             return Fail(LaunchMessages.For(outcome));
 
-        cache.RememberLaunch(BrowserSession.Establish(http), context, completed, clock);
+        cache.RememberLaunch(
+            BrowserSession.Establish(http, options.Value.IsSecure),
+            context,
+            completed,
+            clock
+        );
 
         // The patient goes in the URL so every page after this says which one it believes
         // it is showing, and can be told it is wrong.

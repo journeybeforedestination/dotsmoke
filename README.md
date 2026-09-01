@@ -53,8 +53,16 @@ The app creates `app.db` beside itself on first run and migrates it on every sta
 That is the access log, and deleting the file loses nothing but the log; point
 `ConnectionStrings:AccessLog` somewhere else to put it elsewhere.
 
+`Smart:PublicOrigin` is the address readers reach this app on, and it is required: the
+app is told its origin rather than reading one off the incoming request, so every URL it
+hands an EHR is one a browser can come back to. It ships as `http://localhost:5000`,
+matching the launch profile; behind a proxy that terminates TLS it is the public
+`https://` origin, and nothing about the app changes. A missing or malformed one refuses
+to start.
+
 To launch from a different EHR, add its issuer to `Smart:TrustedIssuers` in
-`appsettings.json` — the app refuses launches from anywhere not on that list:
+`appsettings.json` — the app refuses launches from anywhere not on that list, and refuses
+to start if the list is empty:
 
 ```json
 "Smart": {

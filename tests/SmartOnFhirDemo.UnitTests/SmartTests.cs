@@ -123,6 +123,62 @@ public class SmartTests
         Assert.Equal(Smart.Withheld, Smart.Redact(body, "access_token"));
     }
 
+    // ---- The app's own origin ---------------------------------------------
+    //
+    // What start-up validates Smart:PublicOrigin against. It is a prefix other URLs are
+    // built onto, so anything carrying a path would produce a redirect URI the EHR was
+    // never registered against.
+
+    [Theory]
+    [InlineData("http://localhost:5000")]
+    [InlineData("https://dotsmoke.example")]
+    [InlineData("https://dotsmoke.example/")]
+    [InlineData("https://dotsmoke.example:8443")]
+    public void An_origin_on_its_own_is_accepted(string url)
+    {
+        Assert.True(Smart.IsOrigin(url));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("dotsmoke.example")]
+    [InlineData("/learn")]
+    [InlineData("ftp://dotsmoke.example")]
+    [InlineData("https://dotsmoke.example/app")]
+    [InlineData("https://dotsmoke.example/?tenant=acme")]
+    [InlineData("https://dotsmoke.example#top")]
+    public void Anything_but_an_origin_is_refused(string? url)
+    {
+        Assert.False(Smart.IsOrigin(url));
+    }
+
+    [Fact]
+    public void A_url_is_built_from_the_configured_origin_whatever_the_request_said()
+    {
+        var options = new SmartOptions { PublicOrigin = "https://dotsmoke.example" };
+
+        Assert.Equal("https://dotsmoke.example/callback", options.Url("/callback"));
+    }
+
+    [Fact]
+    public void A_trailing_slash_on_the_origin_does_not_double_up()
+    {
+        var options = new SmartOptions { PublicOrigin = "https://dotsmoke.example/" };
+
+        Assert.Equal("https://dotsmoke.example/learn/callback", options.Url("/learn/callback"));
+    }
+
+    [Theory]
+    [InlineData("https://dotsmoke.example", true)]
+    [InlineData("HTTPS://dotsmoke.example", true)]
+    [InlineData("http://localhost:5000", false)]
+    public void The_cookie_is_secure_when_readers_reach_the_app_over_tls(string origin, bool secure)
+    {
+        // Not from the request: behind a proxy that terminates TLS it arrives as http.
+        Assert.Equal(secure, new SmartOptions { PublicOrigin = origin }.IsSecure);
+    }
+
     // ---- Authorize URL ----------------------------------------------------
 
     private static Dictionary<string, string> AuthorizeQuery(

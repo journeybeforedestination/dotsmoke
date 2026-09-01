@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace SmartOnFhirDemo.Pages.Learn;
 
@@ -8,8 +9,12 @@ namespace SmartOnFhirDemo.Pages.Learn;
 /// same trust check, the same discovery, the same authorization request — and then stops
 /// to explain it instead of redirecting. The launch itself is real; only the pause is new.
 /// </summary>
-public class IndexModel(SmartLaunch smart, IMemoryCache cache, TimeProvider clock)
-    : LearnPage(cache, clock)
+public class IndexModel(
+    SmartLaunch smart,
+    IOptions<SmartOptions> options,
+    IMemoryCache cache,
+    TimeProvider clock
+) : LearnPage(cache, clock)
 {
     public IReadOnlyList<LaunchStep> Steps { get; private set; } = [];
 
@@ -20,7 +25,7 @@ public class IndexModel(SmartLaunch smart, IMemoryCache cache, TimeProvider cloc
     {
         // A separate redirect URI from the plain launch, so the EHR brings the browser
         // back to the narrated callback and the two flows never cross.
-        var redirectUri = $"{Request.Scheme}://{Request.Host}/learn/callback";
+        var redirectUri = options.Value.Url("/learn/callback");
 
         var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
 
