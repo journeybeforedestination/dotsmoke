@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace SmartOnFhirDemo.IntegrationTests;
 
 /// <summary>
@@ -131,6 +133,17 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         );
 
         Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task A_proxy_asking_whether_the_app_is_up_is_told_so()
+    {
+        // The proxy will not send a reader here until this answers, so a rename is an
+        // outage that looks like a deploy hanging.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync("/up", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     // ---- The narrated launch fails the same way the plain one does ---------
