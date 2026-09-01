@@ -99,8 +99,11 @@ gate), which is done — these are what was deliberately left out of it.
   GitHub-native. Fits a repo that already pins the SDK, the packages and the
   container digest, and audits the dependency graph on every restore.
 
-- **Security headers.** The learn pages render raw FHIR JSON and a live
-  authorization code. A CSP and the usual headers cost little.
+- **Rate limiting.** In-box (`AddRateLimiter`), no dependency. A public `/launch`
+  is a public button that drives traffic at someone else's public sandbox — the
+  2019-vintage `r4.smarthealthit.org`, which has no SLA and no rate-limit headers
+  to tell us when we have become a problem. Worth doing when the instance is
+  public, not before.
 
 - **A coverage floor that ratchets.** The nightly floor is a number in a comment
   in `ci.yml`, raised by hand. It could instead be read from the last green run and

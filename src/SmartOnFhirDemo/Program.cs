@@ -68,6 +68,26 @@ using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<AccessLogContext>().Database.Migrate();
 
 app.UseExceptionHandler("/error");
+
+// Resolved once at start-up rather than per request: the answer cannot change while the
+// app is running, because it comes from configuration and not from what a proxy sent.
+var securityHeaders = SecurityHeaders.For(
+    app.Services.GetRequiredService<IOptions<SmartOptions>>().Value.IsSecure
+);
+
+// On every response, including the error page: the exception handler clears the response
+// and re-runs the pipeline from this point, so headers set above it would be lost on
+// exactly the page that renders a failure.
+app.Use(
+    async (http, next) =>
+    {
+        foreach (var (name, value) in securityHeaders)
+            http.Response.Headers[name] = value;
+
+        await next(http);
+    }
+);
+
 app.MapRazorPages();
 
 // What a proxy asks before it sends a reader here. The path is kamal-proxy's default, so

@@ -223,6 +223,17 @@ Design decisions about the .NET side rather than about SMART.
   `/summary` send `Cache-Control: no-store`, because every one of those pages is
   patient data. There is no second mechanism for the walkthrough: the account it
   renders is the credential-free half of the launch the summary resolves.
+- **The security headers are a pure function of one fact.** `SecurityHeaders.For`
+  takes whether the public origin is `https` and returns what every response carries;
+  a middleware in `Program.cs` copies them on. The content security policy is
+  `default-src 'none'` with one relaxation — `style-src 'unsafe-inline'`, for the
+  layout's single `<style>` block — because the app has no script to allow, which
+  makes the browser enforce a claim this README was already making. It sits after
+  `UseExceptionHandler`, since that clears the response and re-runs the pipeline from
+  there, and headers set above it would be missing from exactly the page that renders
+  a failure. `Strict-Transport-Security` follows the configured origin rather than the
+  request, for the same reason the session cookie's `Secure` flag does: behind a proxy
+  that terminates TLS, `UseHsts` sees plain HTTP and emits nothing at all, silently.
 - **The launching user is projected off the base resource.** `fhirUser` may name a
   Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
   `identifier` with FHIRPath against `Resource` — which handles all four in less code

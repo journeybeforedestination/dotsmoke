@@ -146,6 +146,34 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/learn")]
+    [InlineData("/error?message=whatever")]
+    public async Task Every_response_carries_the_security_headers(string url)
+    {
+        // Including /error, which is where every launch failure lands.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(url, TestContext.Current.CancellationToken);
+
+        // Every header the policy names, verbatim, rather than a restatement of it here:
+        // what it should say is SecurityHeadersTests' question, and this is whether the
+        // response carries it. The fixture's origin is http, as localhost is.
+        foreach (var (name, value) in SecurityHeaders.For(secure: false))
+            Assert.Equal(value, response.Headers.GetValues(name).Single());
+    }
+
+    [Fact]
+    public async Task An_app_not_served_over_tls_does_not_claim_it_is()
+    {
+        // The fixture's origin is http, as localhost is. HSTS follows the configured
+        // origin, so this is the same decision the session cookie's Secure flag makes.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync("/", TestContext.Current.CancellationToken);
+
+        Assert.False(response.Headers.Contains("Strict-Transport-Security"));
+    }
+
     // ---- The narrated launch fails the same way the plain one does ---------
 
     [Theory]
