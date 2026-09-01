@@ -72,6 +72,72 @@ jobs:
       - name: Report coverage
         run: ./.github/coverage.sh
 
+  publish:
+    name: Publish the image
+    # Merges only. A pull request from a fork could not be given packages: write anyway,
+    # and an image per branch would be noise in a registry the deploy reads by commit.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Widened from the file-level contents: read, and only here.
+    permissions:
+      contents: read
+      packages: write # push the image to ghcr.io
+      id-token: write # the short-lived certificate the attestation is signed with
+      attestations: write # file the attestation against this repository
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: "**/packages.lock.json"
+
+      # Writes a credential file, and nothing else: the SDK builds and pushes the image
+      # itself, so no daemon runs in this job. Docker would only be needed to *run* one.
+      - name: Sign in to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          echo "$REGISTRY_TOKEN"
+          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # No Dockerfile: the base image, the port and the rootless user are all inferred
+      # from the project, which is one fewer place the runtime version is pinned.
+      #
+      # Tagged with the commit and never `latest`, because the deploy names an exact image
+      # and a moving tag is the one thing a rollback cannot use. RestoreLockedMode keeps
+      # the guarantee the build job's --locked-mode gives; publish restores again for the
+      # linux-x64 RID, and would otherwise be free to resolve something else.
+      #
+      # The digest comes out of the same run that pushed. It has to: the image is not
+      # byte-reproducible, so a second build would name different bytes.
+      - name: Publish the image
+        id: image
+        run: |
+          dotnet publish src/SmartOnFhirDemo --os linux --arch x64 /t:PublishContainer \
+            -p RestoreLockedMode=true \
+            -p ContainerRegistry=ghcr.io \
+            -p ContainerImageTag=${{ github.sha }} \
+            --getProperty:GeneratedContainerDigest \
+            --getResultOutputFile:digest.txt
+          echo "digest=$(cat digest.txt)" >> "$GITHUB_OUTPUT"
+
+      # Signed provenance: what built this image, from which commit, with which workflow.
+      # Named by digest rather than by tag — the tag is a label that can move, and the
+      # attestation is about the bytes. It is filed against this repository rather than
+      # pushed to the registry, so it is verified through GitHub:
+      #
+      #   gh attestation verify oci://ghcr.io/journeybeforedestination/dotsmoke:<sha> \
+      #     --repo journeybeforedestination/dotsmoke
+      - name: Attest the image's provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/journeybeforedestination/dotsmoke
+          subject-digest: ${{ steps.image.outputs.digest }}
+
   integration:
     name: Integration tests against a live launcher
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

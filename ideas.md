@@ -86,18 +86,13 @@ gate), which is done — these are what was deliberately left out of it.
   formatter, fix the prefix, delete the duplication — deliberately deferred so the
   SSO diff stayed narrower than the feature.
 
-- **Container publish with no Dockerfile.** `dotnet publish /t:PublishContainer`
-  is in-box in the SDK and many people do not know it exists. Caveat: loading the
-  built image locally needs a Docker socket, which this machine only has under
-  sudo.
-
 - **Mutation testing.** Stryker.NET against a suite this carefully written would
   either validate it or be very interesting. Third-party and slow, so probably a
   one-off measurement worth writing up rather than a CI gate.
 
-- **Supply-chain provenance.** SBOM generation and build attestation in CI, both
-  GitHub-native. Fits a repo that already pins the SDK, the packages and the
-  container digest, and audits the dependency graph on every restore.
+- **An SBOM alongside the attestation.** CI now attests build provenance; the
+  other half of the GitHub-native pair is `actions/attest-sbom`, which needs an SBOM
+  to attest — one more tool, and the reason this half went first.
 
 - **Rate limiting.** In-box (`AddRateLimiter`), no dependency. A public `/launch`
   is a public button that drives traffic at someone else's public sandbox — the
