@@ -1,4 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    The image `dotnet publish /t:PublishContainer` builds. Without this it would be
+    named after $(AssemblyName), which is SmartOnFhirDemo, and a capital letter in an
+    image name is an error rather than something the tooling folds for you.
+
+    Everything else about the image is inferred and deliberately not repeated here: the
+    aspnet:10.0 base image from the project type and TFM, the port from that image's
+    ASPNETCORE_HTTP_PORTS, and the rootless `app` user it already runs as.
+  -->
+  <PropertyGroup>
+    <ContainerRepository>journeybeforedestination/dotsmoke</ContainerRepository>
+
+    <!--
+      The runtime the image runs on, declared rather than discovered. Publishing for a
+      RID the project does not name resolves a native SQLite binary that is not in the
+      lock file, which rewrites it; the next plain restore then fails NU1004 because the
+      lock file names a runtime the project does not. Naming it here keeps both restores
+      locked: the one CI gates on, and the one that builds what ships.
+    -->
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Hl7.Fhir.R4" Version="6.4.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />

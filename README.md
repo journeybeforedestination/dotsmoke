@@ -381,6 +381,37 @@ that touches the fixture only, not the tests. Either run `hapiproject/hapi` and 
 it, or serve a stub that answers `/metadata` with a valid R4 `CapabilityStatement` —
 `VerifyFhirVersion` means the app fetches that first — along with `/Patient/{id}`.
 
+### The image
+
+A merge to `main` publishes a container image, and there is no Dockerfile. The SDK's
+`PublishContainer` target builds it from the project — inferring the
+`mcr.microsoft.com/dotnet/aspnet:10.0` base image from the project type and the TFM, the
+port from that image's `ASPNETCORE_HTTP_PORTS`, and the rootless `app` user it already
+runs as — and pushes it to `ghcr.io/journeybeforedestination/dotsmoke`, tagged with the
+commit. Never `latest`: a deploy names an exact image, and a moving tag is the one thing
+a rollback cannot use.
+
+No Docker daemon is involved. The SDK writes the layers and talks to the registry itself;
+`docker login` only leaves a credential file behind. A daemon is needed to *run* an image,
+which is why looking at one locally goes through an archive instead:
+
+```bash
+dotnet publish src/SmartOnFhirDemo --os linux --arch x64 /t:PublishContainer \
+  -p ContainerArchiveOutputPath=./image.tar.gz
+```
+
+Each image gets a signed build-provenance attestation naming the workflow, the commit and
+the digest it produced. The digest comes from the same run that pushed — the publish is
+asked for it with `--getProperty:GeneratedContainerDigest` — because the image is not
+byte-reproducible, so a second build would name different bytes. The attestation is filed
+against this repository rather than pushed into the registry, so it does not travel with
+the image; verify it through GitHub:
+
+```bash
+gh attestation verify oci://ghcr.io/journeybeforedestination/dotsmoke:<commit> \
+  --repo journeybeforedestination/dotsmoke
+```
+
 `.github/dependabot.yml` proposes NuGet and action updates weekly. It does not cover
 `.config/dotnet-tools.json`, so the CSharpier and `dotnet-coverage` pins are bumped
 by hand.
@@ -470,6 +501,13 @@ analyzers and the same packages.
 Adding or upgrading a package rewrites the lock file during `dotnet restore` —
 commit it with the change. CI restores with `--locked-mode`, which fails rather
 than quietly resolving something new.
+
+The app's lock file names a `net10.0/linux-x64` target beside the plain one, because the
+image is published for that runtime and it resolves one package the other does not: the
+native SQLite binary. That is also why the project declares `RuntimeIdentifiers`.
+Publishing for a runtime the project does not name rewrites the lock file as a side
+effect, and the next plain `--locked-mode` restore then fails with `NU1004`, having been
+handed a lock file that describes a project it no longer matches.
 
 ## Dependencies
 
