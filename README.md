@@ -53,6 +53,14 @@ The app creates `app.db` beside itself on first run and migrates it on every sta
 That is the access log, and deleting the file loses nothing but the log; point
 `ConnectionStrings:AccessLog` somewhere else to put it elsewhere.
 
+Beside it goes `keys/`, the data protection key ring, which is what signs the antiforgery
+token on `/learn`'s exchange form. It is kept rather than minted afresh at every boot
+because a reader paused on step ④ across a restart would otherwise fail at the exchange,
+with an error naming nothing useful. `DataProtection:KeyRing` moves it, and a deployment
+points it and the log at one volume. Nothing encrypts the keys at rest — every option for
+that means holding a second key somewhere — so the app logs a warning saying so on every
+start, and the directory's permissions are what protect them.
+
 `GET /up` answers 200 and nothing else. It is what a proxy asks before it sends a reader
 here, and `/up` is kamal-proxy's default path, so matching it means a deployment
 configures no health check at all. It stays shallow deliberately: the app migrates its
@@ -192,9 +200,12 @@ Design decisions about the .NET side rather than about SMART.
   issuer only at launch time, which ASP.NET's `OpenIdConnect` middleware — built
   around a static `Authority` — fights.
 - **The log goes to disk; the credential stays in memory.** The access log is the
-  app's own data rather than the EHR's, and the one thing here that outlives the
-  process: a SQLite file, one table, created by an EF Core migration at start-up.
-  Nothing a launch carries joins it. Rows are written by a `DelegatingHandler`
+  app's own data rather than the EHR's, and the only thing a launch produces that
+  outlives the process: a SQLite file, one table, created by an EF Core migration at
+  start-up. Nothing a launch carries joins it. The data protection key ring sits beside
+  it and outlives a restart too, but it holds no launch data either — only the keys that
+  sign `/learn`'s antiforgery token, which is why losing them across a deploy would break
+  a walkthrough mid-exchange. Rows are written by a `DelegatingHandler`
   wrapped around every FHIR request rather than by the pages, because a read added
   later cannot forget to audit itself — there is one place requests leave. That
   handler is constructed per launch and handed its context, never given one to

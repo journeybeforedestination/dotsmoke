@@ -29,6 +29,16 @@ public class AppFixture : IAsyncDisposable
         $"dotsmoke-{Guid.NewGuid():N}.db"
     );
 
+    /// <summary>
+    /// This fixture's own data protection keys, for the same reason as the database: the
+    /// app persists them now, and the content root it would write them under is the
+    /// project's source tree.
+    /// </summary>
+    private readonly string _keyRing = Path.Combine(
+        Path.GetTempPath(),
+        $"dotsmoke-keys-{Guid.NewGuid():N}"
+    );
+
     private readonly WebApplicationFactory<Program> _app;
 
     public AppFixture() =>
@@ -52,6 +62,7 @@ public class AppFixture : IAsyncDisposable
 
         yield return new("Smart:PublicOrigin", $"http://{AppHost}");
         yield return new("ConnectionStrings:AccessLog", $"Data Source={_database}");
+        yield return new("DataProtection:KeyRing", _keyRing);
     }
 
     /// <summary>
@@ -95,6 +106,9 @@ public class AppFixture : IAsyncDisposable
         // how a temporary directory quietly fills up.
         foreach (var suffix in new[] { "", "-shm", "-wal" })
             File.Delete(_database + suffix);
+
+        if (Directory.Exists(_keyRing))
+            Directory.Delete(_keyRing, recursive: true);
 
         GC.SuppressFinalize(this);
     }

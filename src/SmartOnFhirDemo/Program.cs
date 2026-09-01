@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -17,12 +18,24 @@ builder.Services.AddScoped<FhirClients>();
 builder.Services.AddScoped<Chart>();
 builder.Services.AddScoped<Jwks>();
 
-// The one thing here that survives a restart. Everything else this app holds is a
-// credential or patient data, and stays in memory on purpose.
+// What a launch leaves behind, and the only thing here that keeps any of it: everything
+// else this app holds is a credential or patient data, and stays in memory on purpose.
 builder.Services.AddDbContext<AccessLogContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("AccessLog"))
 );
 builder.Services.AddScoped<AccessLog>();
+
+// The learn walkthrough's exchange is a real form post, so antiforgery is live, so these
+// keys are what sign its token. Left unpersisted, a container mints a ring at every boot
+// and a reader sitting on step 4 across a deploy fails at the exchange with a message
+// naming nothing useful. Its own setting rather than a directory taken from the access
+// log's: that one is a connection string, and "Data Source=app.db" names no directory to
+// take. Deployments point both at one volume.
+builder
+    .Services.AddDataProtection()
+    .PersistKeysToFileSystem(
+        new DirectoryInfo(builder.Configuration["DataProtection:KeyRing"] ?? "keys")
+    );
 
 // The seam the id_token's lifetime is checked against, so a test can hold the clock still.
 builder.Services.AddSingleton(TimeProvider.System);
