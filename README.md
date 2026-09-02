@@ -391,6 +391,10 @@ runs as — and pushes it to `ghcr.io/journeybeforedestination/dotsmoke`, tagged
 commit. Never `latest`: a deploy names an exact image, and a moving tag is the one thing
 a rollback cannot use.
 
+One label is declared rather than inferred: `service=dotsmoke`, which Kamal checks
+against `config/deploy.yml` before it will deploy an image, and which it would have set
+itself had it built the image. It is the single string those two files must agree on.
+
 No Docker daemon is involved. The SDK writes the layers and talks to the registry itself;
 `docker login` only leaves a credential file behind. A daemon is needed to *run* an image,
 which is why looking at one locally goes through an archive instead:
@@ -415,6 +419,114 @@ gh attestation verify oci://ghcr.io/journeybeforedestination/dotsmoke:<commit> \
 `.github/dependabot.yml` proposes NuGet and action updates weekly. It does not cover
 `.config/dotnet-tools.json`, so the CSharpier and `dotnet-coverage` pins are bumped
 by hand.
+
+## Deployment
+
+The public instance is <https://dotsmoke.wastebook.dev>, and what you give the launcher
+as **App's Launch URL** is `https://dotsmoke.wastebook.dev/learn` or `.../launch`.
+
+Deploying is something a person runs, not something a merge does. CI's job ends at the
+image; putting one on a server is a separate, deliberate act. That is a choice rather
+than an omission — a deploy key that can root the server stays on one laptop instead of
+living in a repository secret, and nothing reaches the internet without somebody deciding
+it should. The cost is drift: what is running stops being derivable from the log, and
+`kamal app version` becomes the only honest answer to what is live.
+
+```bash
+export KAMAL_REGISTRY_PASSWORD=$(gh auth token)
+kamal deploy --skip-push --version=$(git rev-parse main)
+```
+
+`--skip-push` is what makes this work on an image Kamal did not build. Without it Kamal
+would build its own from a Dockerfile this repo does not have; with it, Kamal pulls the
+tag CI pushed, so the bytes that were attested are the bytes that run, and a rollback
+names an image that provably came out of a merge.
+
+The registry password is a credential Kamal insists on even for a public package, so it
+is fetched from the `gh` login already on the machine rather than stored anywhere.
+
+Configuration is `config/deploy.yml`, and the comments there say why each value is what
+it is. The shape of it: one DigitalOcean droplet, kamal-proxy on :80 and :443 with a
+Let's Encrypt certificate it obtains and renews itself, forwarding to the app container on
+:8080 — the port the base image exposes, not kamal-proxy's default of 80. `/up` needs no
+configuring because it is already kamal-proxy's default path.
+
+### Setting up to deploy
+
+Kamal is a Ruby gem rather than anything this repo builds:
+
+```bash
+gem install kamal -v 2.12.0
+```
+
+It reaches servers through net-ssh, not through the `ssh` binary, and net-ssh looks only
+in `ssh-agent` and at the default identity filenames — `id_rsa`, `id_dsa`, `id_ecdsa`,
+`id_ed25519`. A key at any other path is invisible to it no matter how well `ssh -i`
+works. So the deploy key must either carry one of those names, be loaded into an agent,
+or be named for the host in `~/.ssh/config`. The symptom otherwise is an authentication
+failure that looks like a server problem and is not.
+
+Once per server, before its first deploy:
+
+```bash
+kamal server bootstrap
+ssh root@157.230.87.202 'mkdir -p /var/lib/dotsmoke && chown 1654:1654 /var/lib/dotsmoke'
+```
+
+`bootstrap` installs Docker; nothing else on that droplet was set up by hand. The second
+command is the one thing Kamal does not get right on its own — see below.
+
+### The volume, and the user that has to own it
+
+`/var/lib/dotsmoke` on the host is mounted at `/data`, and holds both things this app
+keeps: `app.db` and the `keys/` ring. One directory for both, so a deploy — which
+replaces the container — loses neither the access log nor the antiforgery token of a
+reader paused mid-launch.
+
+It has to be given to UID 1654 before the first deploy, because the container does not run
+as root and a freshly mounted directory does. 1654 is the image's user, read from the
+image rather than assumed — published sources disagree on the number and `dotnet-docker`
+has changed it before, so if a base image update ever moves it, read the new one:
+
+```bash
+docker inspect ghcr.io/journeybeforedestination/dotsmoke:<commit> --format '{{.Config.User}}'
+```
+
+Getting it wrong is loud, which is the saving grace: the start-up migration throws before
+the app serves, `/up` never answers, and Kamal aborts with the previous container still
+running. It costs a deploy, not the site.
+
+### Two containers, briefly
+
+Kamal boots the new container and waits for its health check before stopping the old one,
+so every deploy has a few seconds where two processes have the SQLite file open and the
+new one migrates while the old one is still answering readers. This is accepted rather
+than solved: one droplet, one file, and migrations that add. It is named here, and at the
+`Database.Migrate()` call in `Program.cs`, because it is the case that comment used to
+wave at as somebody else's problem.
+
+### What is secret, and what only looks it
+
+Nothing the app holds. `Smart:TrustedIssuers` and `Smart:PublicOrigin` are public facts,
+which is why `config/deploy.yml` carries them in the clear, and why `.kamal/secrets`
+names one value and stores none.
+
+The only credential in this system is the SSH key that reaches the server, and while
+deploys are manual it never leaves the machine that deploys. Making a deploy key a
+repository secret is what it would cost to have merges deploy themselves; that trade is
+open rather than settled.
+
+### Rolling back
+
+Reverting the commit and merging is the normal route, and it goes through the same gate
+everything else does. The faster one:
+
+```bash
+kamal rollback <earlier-commit>
+```
+
+It works because images are tagged by commit and Kamal keeps recent containers on the
+host; it does not work for a commit whose image was pruned.
 
 ## Formatting
 
@@ -538,6 +650,12 @@ Three dev-time tools are pinned in `.config/dotnet-tools.json`: `CSharpier` 1.3.
 two coverage reports into one, and `dotnet-ef` 10.0.11 (MIT), which writes the
 migrations and, in CI, checks they still match the model. None of them ships in
 anything.
+
+Kamal 2.12.0 (MIT) is the one dependency that is neither a NuGet package nor a `dotnet`
+tool: it is a Ruby gem, installed on whichever machine deploys and used nowhere else. It
+ships in nothing, nothing in CI installs it, and the app has no idea it exists. Pinned
+for the reason the tools are — an unpinned deploy tool is a deploy that can change
+without a commit.
 
 ## License
 

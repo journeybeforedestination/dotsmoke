@@ -62,8 +62,12 @@ var app = builder.Build();
 // misconfigured app would leave a database behind on its way to refusing to run.
 app.Services.GetRequiredService<IStartupValidator>().Validate();
 
-// Right for a single-instance demo, and wrong anywhere it is not one: with replicas,
-// migrating is a deploy step run once rather than a race between processes starting.
+// Right for a single-instance demo, and briefly untrue on every deploy: Kamal boots the
+// new container and waits for its health check before stopping the old one, so for a few
+// seconds two processes hold this file and one of them migrates while the other is still
+// serving. Accepted knowingly — one droplet, one SQLite file, migrations that add — and
+// recorded in the README's deployment section. With real replicas, migrating is a deploy
+// step run once rather than a race between processes starting.
 using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<AccessLogContext>().Database.Migrate();
 
