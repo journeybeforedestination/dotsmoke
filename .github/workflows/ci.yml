@@ -169,11 +169,20 @@ jobs:
       - name: Install Kamal
         run: sudo gem install --no-document kamal -v 2.12.0
 
-      # Written where both ssh and Kamal's net-ssh already look, so neither is told about
-      # it. ssh-keyscan rather than a pinned host key: the droplet's key changes if it is
-      # ever rebuilt, and a stale pin fails with an error about host keys rather than
-      # about the rebuild. What that accepts is one run's registry token, to anyone in a
-      # position to impersonate the host on the way there.
+      # The key goes where both ssh and Kamal's net-ssh already look, so neither is told
+      # about it.
+      #
+      # No ssh-keyscan. Seeding known_hosts looks right and fails: net-ssh only accepts an
+      # `ssh-ed25519` line from known_hosts when its ED25519 loader is present, so on a
+      # runner the droplet's ed25519 entry is skipped while the server still offers that
+      # key — entries exist, none match, and it raises HostKeyMismatch naming a fingerprint
+      # that is genuinely the server's. net-ssh reads ~/.ssh/config by default and
+      # translates StrictHostKeyChecking, so this asks for the same trust-on-first-use the
+      # keyscan was giving without depending on how known_hosts lines are filtered.
+      #
+      # Trust-on-first-use is what it is: the runner is new every time, so every run is a
+      # first sight. Real verification would mean pinning a key that changes whenever the
+      # droplet is rebuilt, which fails as a host-key error rather than as a rebuild.
       - name: Load the deploy key
         env:
           DEPLOY_KEY: ${{ secrets.DOTSMOKE_DEPLOY }}
@@ -181,7 +190,8 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          printf 'Host %s\n  StrictHostKeyChecking accept-new\n' "$HOST" > ~/.ssh/config
+          chmod 600 ~/.ssh/config
 
       # Both idempotent, and both nearly free once they have run. Together they mean a
       # droplet rebuilt from a bare Ubuntu image needs no setting up by hand: bootstrap
