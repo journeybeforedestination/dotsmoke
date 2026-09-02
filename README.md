@@ -449,10 +449,9 @@ Let's Encrypt certificate it obtains and renews itself, forwarding to the app co
 :8080 — the port the base image exposes, not kamal-proxy's default of 80. `/up` needs no
 configuring because it is already kamal-proxy's default path.
 
-Nothing on that droplet was set up by hand. `kamal server bootstrap` installs Docker, and
-the deploy job runs it on every deploy because it costs nothing once Docker is there; the
-practical effect is that a droplet rebuilt from bare Ubuntu needs no ceremony to become
-the deploy target again.
+The deploy job only deploys. Preparing a server is a separate, rare thing — see
+**Setting up a new server** below — rather than steps replayed on every merge to be
+correct once.
 
 ### The volume, and the user that has to own it
 
@@ -461,11 +460,10 @@ keeps: `app.db` and the `keys/` ring. One directory for both, so a deploy — wh
 replaces the container — loses neither the access log nor the antiforgery token of a
 reader paused mid-launch.
 
-The deploy job creates that directory and gives it to UID 1654 before Kamal runs. It has
-to: the container does not run as root, and a freshly mounted directory does. 1654 is the
-image's user, read from the image rather than assumed — published sources disagree on the
-number and `dotnet-docker` has changed it before, so if a base image update ever moves it,
-read the new one and change the job:
+It must be owned by UID 1654 before the first deploy, because the container does not run
+as root and a freshly mounted directory does. 1654 is the image's user, read from the
+image rather than assumed — published sources disagree on the number and `dotnet-docker`
+has changed it before, so if a base image update ever moves it, read the new one:
 
 ```bash
 docker inspect ghcr.io/journeybeforedestination/dotsmoke:<commit> --format '{{.Config.User}}'
@@ -474,6 +472,22 @@ docker inspect ghcr.io/journeybeforedestination/dotsmoke:<commit> --format '{{.C
 Getting it wrong is loud, which is the saving grace: the start-up migration throws before
 the app serves, `/up` never answers, and Kamal aborts with the previous container still
 running. It costs a deploy, not the site.
+
+### Setting up a new server
+
+Rare enough to be a procedure rather than a workflow step, and it is more than one
+command: create the droplet, point the `A` record at it, put the deploy key in its
+`authorized_keys`, then
+
+```bash
+kamal server bootstrap
+ssh root@<host> 'mkdir -p /var/lib/dotsmoke && chown 1654:1654 /var/lib/dotsmoke'
+```
+
+`bootstrap` installs Docker. The second line is the volume above, and skipping it is the
+one failure worth recognising on sight: the container starts, the start-up migration
+cannot write `/data/app.db`, `/up` never answers, and Kamal aborts the deploy — which
+reads as a health-check timeout rather than as a permissions problem.
 
 ### Two containers, briefly
 

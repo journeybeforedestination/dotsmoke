@@ -193,21 +193,6 @@ jobs:
           printf 'Host %s\n  StrictHostKeyChecking accept-new\n' "$HOST" > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
-      # Both idempotent, and both nearly free once they have run. Together they mean a
-      # droplet rebuilt from a bare Ubuntu image needs no setting up by hand: bootstrap
-      # installs Docker, and the directory is the one thing Kamal does not get right on
-      # its own.
-      #
-      # 1654 is the UID the image runs as, read out of the published image's config
-      # rather than assumed — published sources disagree, and dotnet-docker has changed
-      # it before. A freshly mounted directory is root-owned and the app is not root, so
-      # getting this wrong shows up as the start-up migration throwing before anything
-      # serves. Loud, and it takes the deploy with it rather than the old container.
-      - name: Prepare the server
-        run: |
-          kamal server bootstrap
-          ssh root@"$HOST" 'mkdir -p /var/lib/dotsmoke && chown 1654:1654 /var/lib/dotsmoke'
-
       # --skip-push is the documented way to run an image Kamal did not build: it pulls
       # on the server instead of building here. --version names this commit's image, the
       # one the job above pushed and attested.
