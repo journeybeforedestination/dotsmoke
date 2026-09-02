@@ -70,7 +70,17 @@ public static class LaunchMessages
             : null;
 
     public static string AuthorizationDenied(string reason) =>
-        $"The EHR refused the authorization request: {reason}";
+        $"The EHR refused the authorization request: {Excerpt(reason)}";
+
+    /// <summary>
+    /// As much of what another server said as is worth repeating. These sentences are this
+    /// app's, but the reasons inside some of them are not: an error body, an
+    /// <c>error_description</c> and an <c>OperationOutcome</c> are all written by whoever
+    /// answered. A server that replies to a failed token exchange with an HTML page should
+    /// not get to put a page on this one.
+    /// </summary>
+    private static string Excerpt(string reason) =>
+        reason.Length <= 200 ? reason : reason[..200] + "…";
 
     /// <summary>
     /// Why a panel is showing no rows. Every one of these is a sentence rather than an
@@ -106,7 +116,7 @@ public static class LaunchMessages
             LaunchOutcome.UntrustedIssuer => UntrustedIssuer,
 
             LaunchOutcome.DiscoveryFailed(var wellKnown, var reason) =>
-                $"Could not read the SMART configuration from {wellKnown} — {reason}",
+                $"Could not read the SMART configuration from {wellKnown} — {Excerpt(reason)}",
 
             _ => throw new UnreachableException($"{outcome.GetType().Name} is not a failure."),
         };
@@ -121,10 +131,10 @@ public static class LaunchMessages
             CallbackOutcome.UnknownLaunch => UnknownLaunch,
 
             CallbackOutcome.TokenExchangeFailed(var status, var reason) =>
-                $"Token exchange failed ({status}): {reason}",
+                $"Token exchange failed ({status}): {Excerpt(reason)}",
 
             CallbackOutcome.TokenEndpointUnreachable(var reason) =>
-                $"The EHR's token endpoint did not answer: {reason}",
+                $"The EHR's token endpoint did not answer: {Excerpt(reason)}",
 
             CallbackOutcome.NoAccessToken => "The token endpoint returned no access token.",
 
@@ -135,7 +145,7 @@ public static class LaunchMessages
                 $"Patient/{patientId} was not found on {iss}.",
 
             CallbackOutcome.PatientReadFailed(var status, var reason) =>
-                $"The FHIR server returned {status}: {reason}",
+                $"The FHIR server returned {status}: {Excerpt(reason)}",
 
             CallbackOutcome.IncompatibleFhirVersion(var iss, var reason) =>
                 $"The FHIR server at {iss} is not compatible with FHIR {ModelInfo.Version}: {reason}",

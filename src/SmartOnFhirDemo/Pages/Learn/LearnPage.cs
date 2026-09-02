@@ -38,5 +38,13 @@ public abstract class LearnPage(IMemoryCache cache, TimeProvider clock) : PageMo
 
     protected IActionResult Relaunch(string? patient) => Fail(LaunchMessages.Relaunch(patient));
 
-    protected IActionResult Fail(string message) => RedirectToPage("/Error", new { message });
+    /// <summary>
+    /// The sentence goes in TempData, not in the redirect's query string. See
+    /// <see cref="ErrorModel"/> for why, and Razor Pages saves it across the redirect.
+    /// </summary>
+    protected IActionResult Fail(string message)
+    {
+        TempData[ErrorModel.Key] = message;
+        return RedirectToPage("/Error");
+    }
 }

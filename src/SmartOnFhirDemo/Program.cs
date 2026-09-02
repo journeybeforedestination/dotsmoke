@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using SmartOnFhirDemo;
+using SmartOnFhirDemo.Pages;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,6 +63,19 @@ builder
     .Services.AddDataProtection()
     .PersistKeysToFileSystem(
         new DirectoryInfo(builder.Configuration["DataProtection:KeyRing"] ?? "keys")
+    );
+
+// The sentence a failed launch leaves for /error travels in this cookie, and that sentence
+// can name the patient a reader was looking at. So it follows the session cookie's rule
+// rather than the framework's default, and for the same reason: the flag comes from the
+// origin the app was told, never from the scheme of a request a proxy already rewrote.
+builder
+    .Services.AddOptions<CookieTempDataProviderOptions>()
+    .Configure<IOptions<SmartOptions>>(
+        (cookie, smart) =>
+            cookie.Cookie.SecurePolicy = smart.Value.IsSecure
+                ? CookieSecurePolicy.Always
+                : CookieSecurePolicy.None
     );
 
 // The seam the id_token's lifetime is checked against, so a test can hold the clock still.
@@ -137,6 +152,7 @@ app.MapGet(
     async (
         string? iss,
         string? launch,
+        HttpContext http,
         IOptions<SmartOptions> options,
         SmartLaunch smart,
         IMemoryCache cache,
@@ -149,7 +165,7 @@ app.MapGet(
 
         return outcome is LaunchOutcome.Prepared prepared
             ? Remember(prepared)
-            : Fail(LaunchMessages.For(outcome));
+            : Fail(http, LaunchMessages.For(outcome));
 
         IResult Remember(LaunchOutcome.Prepared prepared)
         {
@@ -190,7 +206,7 @@ app.MapGet(
         );
 
         if (outcome is not CallbackOutcome.Completed completed || context is null)
-            return Fail(LaunchMessages.For(outcome));
+            return Fail(http, LaunchMessages.For(outcome));
 
         cache.RememberLaunch(
             BrowserSession.Establish(http, options.Value.IsSecure),
@@ -211,8 +227,26 @@ app.MapGet(
 app.Run();
 
 // Every way a launch can fail lands on the same page, with a sentence saying which.
-static IResult Fail(string message) =>
-    Results.Redirect($"/error?message={Uri.EscapeDataString(message)}");
+//
+// The sentence travels in TempData rather than in the redirect's query string. It is this
+// app's own text either way, and a page that renders whatever a URL carries is a page a
+// stranger can put their own words on — in this app's voice, on this app's domain, with no
+// script needed and nothing in the CSP that could stop it. TempData rides in a cookie the
+// data protection ring signs, so only this app can write one. It also keeps the launch id
+// and the patient out of a URL that would otherwise sit in browser history.
+static IResult Fail(HttpContext http, string message)
+{
+    var tempData = http
+        .RequestServices.GetRequiredService<ITempDataDictionaryFactory>()
+        .GetTempData(http);
+
+    tempData[ErrorModel.Key] = message;
+
+    // Razor Pages has a filter that does this; a minimal endpoint has to say so.
+    tempData.Save();
+
+    return Results.Redirect("/error");
+}
 
 // Named so the integration tests can host this app with WebApplicationFactory;
 // top-level statements otherwise compile to an internal Program class.
