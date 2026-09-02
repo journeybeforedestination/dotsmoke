@@ -14,12 +14,31 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
 builder.Services.AddRazorPages();
-builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient();
+
+// Bounded, because /launch is a URL a stranger can open and every one of them leaves an
+// entry here for five minutes. Counted in entries rather than bytes: they are all one of
+// two small records, and a count is a number this file can be read and believed about.
+builder.Services.AddMemoryCache(options => options.SizeLimit = LaunchCache.Entries);
+
+// Discovery and the JWKS go through the unnamed client, and both are documents an EHR
+// publishes rather than data it holds — small, and small on every server that works.
+// Bounding the buffer here is what stops one that does not from being read into memory
+// whole; the timeout below is what stops one that never finishes.
+builder.Services.AddHttpClient(
+    Options.DefaultName,
+    client => client.MaxResponseContentBufferSize = 512 * 1024
+);
 
 // Named so its handler can be taken from the pool and wrapped per launch by the access
-// log. Nothing else is configured on it yet.
+// log. No content bound: a Bundle legitimately is large, and this one is answering to a
+// launch that was authorized rather than to anyone who can open a URL.
 builder.Services.AddHttpClient(FhirClients.Name);
+
+// The default is 100 seconds, which is a long time to hold a request open on behalf of
+// someone who only had to type a URL to start it.
+builder.Services.ConfigureHttpClientDefaults(http =>
+    http.ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(30))
+);
 builder.Services.AddScoped<SmartLaunch>();
 builder.Services.AddScoped<FhirClients>();
 builder.Services.AddScoped<Chart>();

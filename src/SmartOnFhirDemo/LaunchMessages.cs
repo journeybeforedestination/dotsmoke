@@ -123,6 +123,9 @@ public static class LaunchMessages
             CallbackOutcome.TokenExchangeFailed(var status, var reason) =>
                 $"Token exchange failed ({status}): {reason}",
 
+            CallbackOutcome.TokenEndpointUnreachable(var reason) =>
+                $"The EHR's token endpoint did not answer: {reason}",
+
             CallbackOutcome.NoAccessToken => "The token endpoint returned no access token.",
 
             CallbackOutcome.NoPatientContext =>

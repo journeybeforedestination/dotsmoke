@@ -83,6 +83,13 @@ public abstract record CallbackOutcome
 
     public sealed record TokenExchangeFailed(int Status, string Reason) : CallbackOutcome;
 
+    /// <summary>
+    /// The token endpoint did not answer at all — refused, unreachable, or slower than the
+    /// client's timeout. Kept apart from <see cref="TokenExchangeFailed"/> because there is
+    /// no status to report: nothing was answered.
+    /// </summary>
+    public sealed record TokenEndpointUnreachable(string Reason) : CallbackOutcome;
+
     public sealed record NoAccessToken : CallbackOutcome;
 
     public sealed record NoPatientContext : CallbackOutcome;
@@ -138,6 +145,12 @@ public sealed partial class SmartLaunch(
     [LoggerMessage(Level = LogLevel.Warning, Message = "SMART discovery failed for {wellKnown}")]
     private partial void LogDiscoveryFailed(Exception ex, string wellKnown);
 
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "The token endpoint {tokenEndpoint} did not answer"
+    )]
+    private partial void LogTokenEndpointUnreachable(Exception ex, string tokenEndpoint);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading Patient/{patientId} failed")]
     private partial void LogPatientReadFailed(Exception ex, string? patientId);
 
@@ -179,8 +192,16 @@ public sealed partial class SmartLaunch(
             configJson = await discovery.Content.ReadAsStringAsync(ct);
             config = JsonSerializer.Deserialize<SmartConfiguration>(configJson);
         }
+        // TaskCanceledException among them because the clients carry a timeout: an issuer
+        // that never answers is discovery failing, not an unhandled exception on a URL a
+        // stranger can open.
         catch (Exception ex)
-            when (ex is HttpRequestException or JsonException or NotSupportedException)
+            when (ex
+                    is HttpRequestException
+                        or JsonException
+                        or NotSupportedException
+                        or TaskCanceledException
+            )
         {
             LogDiscoveryFailed(ex, wellKnown);
             return new LaunchOutcome.DiscoveryFailed(wellKnown, ex.Message);
@@ -272,11 +293,13 @@ public sealed partial class SmartLaunch(
             }
         );
 
-        using var response = await clients.CreateClient().PostAsync(launch.TokenEndpoint, form, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
+        var (status, body, unreachable) = await ExchangeAsync(launch.TokenEndpoint, form, ct);
 
-        if (!response.IsSuccessStatusCode)
-            return new CallbackOutcome.TokenExchangeFailed((int)response.StatusCode, body);
+        if (unreachable is { } silence)
+            return new CallbackOutcome.TokenEndpointUnreachable(silence);
+
+        if (status is < 200 or >= 300)
+            return new CallbackOutcome.TokenExchangeFailed(status, body);
 
         TokenResponse? token;
         try
@@ -305,6 +328,30 @@ public sealed partial class SmartLaunch(
         var context = Established(launch, token, identity.Facts?.FhirUser);
 
         return await ReadPatientAsync(context, token, tokenJson, identity, ct);
+    }
+
+    /// <summary>
+    /// What the token endpoint answered, or the reason it did not. Wrapped because the
+    /// clients carry a timeout: an EHR that goes quiet has to land on the same page as one
+    /// that answers badly, rather than as an exception out of the callback.
+    /// </summary>
+    private async Task<(int Status, string Body, string? Unreachable)> ExchangeAsync(
+        string tokenEndpoint,
+        FormUrlEncodedContent form,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            using var response = await clients.CreateClient().PostAsync(tokenEndpoint, form, ct);
+
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(ct), null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            LogTokenEndpointUnreachable(ex, tokenEndpoint);
+            return (0, "", ex.Message);
+        }
     }
 
     /// <summary>

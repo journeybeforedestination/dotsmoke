@@ -37,10 +37,17 @@ public sealed partial class Jwks(IHttpClientFactory clients, IMemoryCache cache,
             var json = await clients.CreateClient().GetStringAsync(jwksUri, ct);
             var keys = new JsonWebKeySet(json).GetSigningKeys();
 
-            cache.Set($"jwks:{jwksUri}", keys, Lifetime);
+            cache.Set(
+                $"jwks:{jwksUri}",
+                keys,
+                new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = Lifetime, Size = 1 }
+            );
             return keys;
         }
-        catch (Exception ex) when (ex is HttpRequestException or ArgumentException)
+        // TaskCanceledException because the client carries a timeout, and this is one of the
+        // ways identity is allowed to be unavailable rather than fatal.
+        catch (Exception ex)
+            when (ex is HttpRequestException or ArgumentException or TaskCanceledException)
         {
             LogFetchFailed(ex, jwksUri);
             return null;

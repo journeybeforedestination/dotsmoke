@@ -329,6 +329,29 @@ public class SmartLaunchTests : IDisposable
     }
 
     [Fact]
+    public async Task A_token_endpoint_that_does_not_answer_is_a_sentence_not_an_exception()
+    {
+        // The clients carry a timeout, so this is a way a callback can end rather than a
+        // way it can throw — and there is no status to report, because nothing answered.
+        var smart = Smart(_ => throw new HttpRequestException("connection refused"));
+
+        var outcome = Assert.IsType<CallbackOutcome.TokenEndpointUnreachable>(
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
+        );
+
+        Assert.Contains("connection refused", outcome.Reason);
+    }
+
+    [Fact]
     public async Task A_token_response_without_an_access_token_is_not_trusted()
     {
         var smart = Smart(_ => Json("""{"patient":"pat-1"}"""));
