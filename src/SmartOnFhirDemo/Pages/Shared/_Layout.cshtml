@@ -78,6 +78,16 @@
            label/value table where every value gets a sentence explaining itself. */
         .lead { margin-bottom: 2.5rem; }
         .step { margin: 2.5rem 0; }
+
+        /* A rule between consecutive steps, never above the first. Spacing alone left
+           a run of them reading as one column of text, and where one stop ends is the
+           thing someone following along is looking for. The next step's margin is
+           dropped so the rule sits centred in the gap rather than below it. */
+        .step + .step {
+            margin-top: 0;
+            padding-top: 2.5rem;
+            border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+        }
         .step h2 { font-size: 1.0625rem; margin: 0 0 .5rem; }
         .step > p { margin: 0 0 1.25rem; }
         .step dl { gap: 1rem 1.5rem; align-items: baseline; }
