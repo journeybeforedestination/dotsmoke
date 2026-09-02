@@ -234,6 +234,9 @@ Design decisions about the .NET side rather than about SMART.
   a failure. `Strict-Transport-Security` follows the configured origin rather than the
   request, for the same reason the session cookie's `Secure` flag does: behind a proxy
   that terminates TLS, `UseHsts` sees plain HTTP and emits nothing at all, silently.
+  One header is removed rather than added: Kestrel names itself on every response
+  unless told not to, which is one more fact about this deployment than a stranger
+  needs.
 - **The launching user is projected off the base resource.** `fhirUser` may name a
   Practitioner, Patient, RelatedPerson or Person, so `LaunchUser` selects `name` and
   `identifier` with FHIRPath against `Resource` — which handles all four in less code

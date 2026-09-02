@@ -6,6 +6,13 @@ using Microsoft.Extensions.Options;
 using SmartOnFhirDemo;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Kestrel names itself in a `Server` header on every response otherwise. It tells a
+// stranger which server this is and nothing this app needs them to know. No test covers
+// it: the integration tests run on TestServer, which has no Kestrel and never emits the
+// header, so an assertion would pass for a reason unrelated to this line.
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+
 builder.Services.AddRazorPages();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
