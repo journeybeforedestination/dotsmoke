@@ -89,7 +89,9 @@ happening.
 
 - **The issuer is checked against an allowlist.** `iss` arrives as a query
   parameter and everything downstream trusts it. Unchecked, that is a server-side
-  request forgery, an open redirect, and a way to harvest authorization codes.
+  request forgery, an open redirect, and a way to harvest authorization codes. The
+  endpoints that issuer publishes are held to its origin too: an allowlist matches an
+  origin, and the path beneath one is the EHR's to choose.
 - **The id_token is validated, though it need not be.** OIDC Core 3.1.3.7 lets an
   app skip signature validation when the token arrives over direct TLS to the token
   endpoint, which is how it arrives here. This app checks it anyway, against the

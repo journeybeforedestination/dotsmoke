@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using SmartOnFhirDemo;
+using SmartOnFhirDemo.Pages;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,12 +16,31 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
 builder.Services.AddRazorPages();
-builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient();
+
+// Bounded, because /launch is a URL a stranger can open and every one of them leaves an
+// entry here for five minutes. Counted in entries rather than bytes: they are all one of
+// two small records, and a count is a number this file can be read and believed about.
+builder.Services.AddMemoryCache(options => options.SizeLimit = LaunchCache.Entries);
+
+// Discovery and the JWKS go through the unnamed client, and both are documents an EHR
+// publishes rather than data it holds — small, and small on every server that works.
+// Bounding the buffer here is what stops one that does not from being read into memory
+// whole; the timeout below is what stops one that never finishes.
+builder.Services.AddHttpClient(
+    Options.DefaultName,
+    client => client.MaxResponseContentBufferSize = 512 * 1024
+);
 
 // Named so its handler can be taken from the pool and wrapped per launch by the access
-// log. Nothing else is configured on it yet.
+// log. No content bound: a Bundle legitimately is large, and this one is answering to a
+// launch that was authorized rather than to anyone who can open a URL.
 builder.Services.AddHttpClient(FhirClients.Name);
+
+// The default is 100 seconds, which is a long time to hold a request open on behalf of
+// someone who only had to type a URL to start it.
+builder.Services.ConfigureHttpClientDefaults(http =>
+    http.ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(30))
+);
 builder.Services.AddScoped<SmartLaunch>();
 builder.Services.AddScoped<FhirClients>();
 builder.Services.AddScoped<Chart>();
@@ -42,6 +63,19 @@ builder
     .Services.AddDataProtection()
     .PersistKeysToFileSystem(
         new DirectoryInfo(builder.Configuration["DataProtection:KeyRing"] ?? "keys")
+    );
+
+// The sentence a failed launch leaves for /error travels in this cookie, and that sentence
+// can name the patient a reader was looking at. So it follows the session cookie's rule
+// rather than the framework's default, and for the same reason: the flag comes from the
+// origin the app was told, never from the scheme of a request a proxy already rewrote.
+builder
+    .Services.AddOptions<CookieTempDataProviderOptions>()
+    .Configure<IOptions<SmartOptions>>(
+        (cookie, smart) =>
+            cookie.Cookie.SecurePolicy = smart.Value.IsSecure
+                ? CookieSecurePolicy.Always
+                : CookieSecurePolicy.None
     );
 
 // The seam the id_token's lifetime is checked against, so a test can hold the clock still.
@@ -118,6 +152,7 @@ app.MapGet(
     async (
         string? iss,
         string? launch,
+        HttpContext http,
         IOptions<SmartOptions> options,
         SmartLaunch smart,
         IMemoryCache cache,
@@ -130,7 +165,7 @@ app.MapGet(
 
         return outcome is LaunchOutcome.Prepared prepared
             ? Remember(prepared)
-            : Fail(LaunchMessages.For(outcome));
+            : Fail(http, LaunchMessages.For(outcome));
 
         IResult Remember(LaunchOutcome.Prepared prepared)
         {
@@ -171,7 +206,7 @@ app.MapGet(
         );
 
         if (outcome is not CallbackOutcome.Completed completed || context is null)
-            return Fail(LaunchMessages.For(outcome));
+            return Fail(http, LaunchMessages.For(outcome));
 
         cache.RememberLaunch(
             BrowserSession.Establish(http, options.Value.IsSecure),
@@ -192,8 +227,26 @@ app.MapGet(
 app.Run();
 
 // Every way a launch can fail lands on the same page, with a sentence saying which.
-static IResult Fail(string message) =>
-    Results.Redirect($"/error?message={Uri.EscapeDataString(message)}");
+//
+// The sentence travels in TempData rather than in the redirect's query string. It is this
+// app's own text either way, and a page that renders whatever a URL carries is a page a
+// stranger can put their own words on — in this app's voice, on this app's domain, with no
+// script needed and nothing in the CSP that could stop it. TempData rides in a cookie the
+// data protection ring signs, so only this app can write one. It also keeps the launch id
+// and the patient out of a URL that would otherwise sit in browser history.
+static IResult Fail(HttpContext http, string message)
+{
+    var tempData = http
+        .RequestServices.GetRequiredService<ITempDataDictionaryFactory>()
+        .GetTempData(http);
+
+    tempData[ErrorModel.Key] = message;
+
+    // Razor Pages has a filter that does this; a minimal endpoint has to say so.
+    tempData.Save();
+
+    return Results.Redirect("/error");
+}
 
 // Named so the integration tests can host this app with WebApplicationFactory;
 // top-level statements otherwise compile to an internal Program class.

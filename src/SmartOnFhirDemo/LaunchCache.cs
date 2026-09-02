@@ -20,9 +20,23 @@ public static class LaunchCache
     /// <summary>Long enough to read a page, short enough that nothing lingers.</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// How many launches this app will hold at once, in flight and established together.
+    /// Far more than it will ever have and few enough to be a bound: a launch in flight
+    /// costs a URL and a verifier, and anyone able to open a URL can start one.
+    ///
+    /// The unit is entries, which is why every <c>Set</c> below says <c>Size = 1</c> —
+    /// a cache with a limit refuses an entry that does not price itself.
+    /// </summary>
+    public const long Entries = 10_000;
+
     /// <summary>Only the state and PKCE verifier need to survive the trip through the EHR.</summary>
     public static void Remember(this IMemoryCache cache, LaunchOutcome.Prepared prepared) =>
-        cache.Set(Smart.CacheKey(prepared.State), prepared.Session, Lifetime);
+        cache.Set(
+            Smart.CacheKey(prepared.State),
+            prepared.Session,
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = Lifetime, Size = 1 }
+        );
 
     /// <summary>Reads a launch in flight without spending it, for the page that pauses before the exchange.</summary>
     public static LaunchState? PeekLaunch(this IMemoryCache cache, string? state) =>
@@ -67,7 +81,7 @@ public static class LaunchCache
         cache.Set(
             Smart.ContextKey(sid, context.LaunchId),
             new EstablishedLaunch(context, rendered),
-            lifetime
+            new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = lifetime, Size = 1 }
         );
     }
 

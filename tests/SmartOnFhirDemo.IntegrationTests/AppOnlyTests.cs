@@ -149,7 +149,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [Theory]
     [InlineData("/")]
     [InlineData("/learn")]
-    [InlineData("/error?message=whatever")]
+    [InlineData("/error")]
     public async Task Every_response_carries_the_security_headers(string url)
     {
         // Including /error, which is where every launch failure lands.
@@ -161,6 +161,29 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         // response carries it. The fixture's origin is http, as localhost is.
         foreach (var (name, value) in SecurityHeaders.For(secure: false))
             Assert.Equal(value, response.Headers.GetValues(name).Single());
+    }
+
+    [Fact]
+    public async Task The_error_page_says_nothing_a_url_told_it_to()
+    {
+        // A page that renders whatever its URL carries is a page a stranger can put their
+        // own words on, in this app's voice and on this app's domain — phishing that needs
+        // no script, so nothing in the CSP would stop it. The sentence comes from TempData,
+        // which only this app can write.
+        var html = await app.GetAsync("/error?message=Call+1-800-not-us+to+restore+access");
+
+        Assert.DoesNotContain("1-800-not-us", html);
+        Assert.Contains("Something went wrong", html);
+    }
+
+    [Fact]
+    public async Task A_failed_launch_still_reaches_the_error_page_with_its_own_sentence()
+    {
+        // The other half of the same change: the sentences are still the lesson, they just
+        // travel in a cookie the data protection ring signs rather than in the URL.
+        var html = await app.GetAsync("/launch?iss=https://evil.example/fhir&launch=irrelevant");
+
+        Assert.Contains("not registered to launch from that EHR", html);
     }
 
     [Fact]

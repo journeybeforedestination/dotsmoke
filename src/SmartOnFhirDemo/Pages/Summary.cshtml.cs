@@ -90,8 +90,15 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
             Status: null
         );
 
-    private RedirectToPageResult Relaunch(string? patient) =>
-        RedirectToPage("/Error", new { message = LaunchMessages.Relaunch(patient) });
+    /// <summary>
+    /// The sentence names the patient, so it travels in TempData rather than in a URL that
+    /// a browser would keep. See <see cref="ErrorModel"/>.
+    /// </summary>
+    private RedirectToPageResult Relaunch(string? patient)
+    {
+        TempData[ErrorModel.Key] = LaunchMessages.Relaunch(patient);
+        return RedirectToPage("/Error");
+    }
 
     /// <summary>
     /// This URL is stable and revisitable now, which the one-shot callback was not. That

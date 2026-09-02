@@ -12,6 +12,11 @@ on:
     - cron: "17 7 * * *"
   workflow_dispatch:
 
+# Every action is pinned to the commit its tag pointed at, with the tag left beside it as a
+# comment. A tag is a pointer somebody else can move, and two jobs below hold things worth
+# moving one for: the deploy key is written to the runner's disk, and job-level `env` is
+# readable by every step in a job, third-party ones included. Dependabot updates a pinned
+# SHA and rewrites that comment, so this costs nothing to keep current.
 permissions:
   contents: read
 
@@ -25,9 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
           cache: true
@@ -87,9 +92,9 @@ jobs:
       id-token: write # the short-lived certificate the attestation is signed with
       attestations: write # file the attestation against this repository
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
           cache: true
@@ -97,12 +102,17 @@ jobs:
 
       # Writes a credential file, and nothing else: the SDK builds and pushes the image
       # itself, so no daemon runs in this job. Docker would only be needed to *run* one.
+      #
+      # Both values arrive through the environment rather than being pasted into the
+      # command. A username cannot carry shell metacharacters, so this is the habit rather
+      # than the fix — but the habit is what stops the one that could.
       - name: Sign in to GHCR
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
         run: >
           echo "$REGISTRY_TOKEN"
-          | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
 
       # No Dockerfile: the base image, the port and the rootless user are all inferred
       # from the project, which is one fewer place the runtime version is pinned.
@@ -133,7 +143,7 @@ jobs:
       #   gh attestation verify oci://ghcr.io/journeybeforedestination/dotsmoke:<sha> \
       #     --repo journeybeforedestination/dotsmoke
       - name: Attest the image's provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-name: ghcr.io/journeybeforedestination/dotsmoke
           subject-digest: ${{ steps.image.outputs.digest }}
@@ -145,6 +155,18 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # What keeps the deploy key out of reach of everything except this job.
+    #
+    # A repository secret is readable by any workflow run, and a `pull_request` run from a
+    # branch of this repository is one — it gets the secrets and it runs the workflow file
+    # from that branch. So with the key stored at the repository, a push that nobody
+    # reviewed and nothing merged could read it, and the key is root on the droplet.
+    #
+    # An environment secret is readable only by a job naming its environment, and this
+    # environment's deployment branch policy is `main` alone. A job on any other branch that
+    # names it is refused before its first step runs. The deploy stays unattended; what
+    # closes is the path that did not need a merge.
+    environment: production
     # The server logs in to ghcr.io with this job's token before pulling. Read only:
     # nothing here writes to the registry.
     permissions:
@@ -156,7 +178,7 @@ jobs:
       # and expires with it, so the server holds no standing credential of ours.
       KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Ruby is already on the runner image, so only Kamal is missing. Pinned: an
       # unpinned deploy tool is a deploy that can change without a commit.
@@ -193,6 +215,18 @@ jobs:
           printf 'Host %s\n  StrictHostKeyChecking accept-new\n' "$HOST" > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
+      # The attestation the publish job filed is worth producing only if something reads
+      # it. Kamal deploys a tag, and a tag is a label that can be moved — by anything that
+      # can write to the package. This asks GitHub whether the bytes that tag names now are
+      # the bytes this repository's workflow built, and fails the deploy if they are not.
+      - name: Verify the image this deploy will pull
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh attestation verify
+          oci://ghcr.io/journeybeforedestination/dotsmoke:${{ github.sha }}
+          --repo ${{ github.repository }}
+
       # --skip-push is the documented way to run an image Kamal did not build: it pulls
       # on the server instead of building here. --version names this commit's image, the
       # one the job above pushed and attested.
@@ -208,9 +242,9 @@ jobs:
     env:
       SMART_LAUNCHER_URL: http://localhost:8080
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           global-json-file: global.json
           cache: true

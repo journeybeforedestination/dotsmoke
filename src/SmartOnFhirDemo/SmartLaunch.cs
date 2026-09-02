@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Hl7.Fhir.Serialization;
@@ -82,6 +83,13 @@ public abstract record CallbackOutcome
 
     public sealed record TokenExchangeFailed(int Status, string Reason) : CallbackOutcome;
 
+    /// <summary>
+    /// The token endpoint did not answer at all — refused, unreachable, or slower than the
+    /// client's timeout. Kept apart from <see cref="TokenExchangeFailed"/> because there is
+    /// no status to report: nothing was answered.
+    /// </summary>
+    public sealed record TokenEndpointUnreachable(string Reason) : CallbackOutcome;
+
     public sealed record NoAccessToken : CallbackOutcome;
 
     public sealed record NoPatientContext : CallbackOutcome;
@@ -137,6 +145,12 @@ public sealed partial class SmartLaunch(
     [LoggerMessage(Level = LogLevel.Warning, Message = "SMART discovery failed for {wellKnown}")]
     private partial void LogDiscoveryFailed(Exception ex, string wellKnown);
 
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "The token endpoint {tokenEndpoint} did not answer"
+    )]
+    private partial void LogTokenEndpointUnreachable(Exception ex, string tokenEndpoint);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading Patient/{patientId} failed")]
     private partial void LogPatientReadFailed(Exception ex, string? patientId);
 
@@ -178,8 +192,16 @@ public sealed partial class SmartLaunch(
             configJson = await discovery.Content.ReadAsStringAsync(ct);
             config = JsonSerializer.Deserialize<SmartConfiguration>(configJson);
         }
+        // TaskCanceledException among them because the clients carry a timeout: an issuer
+        // that never answers is discovery failing, not an unhandled exception on a URL a
+        // stranger can open.
         catch (Exception ex)
-            when (ex is HttpRequestException or JsonException or NotSupportedException)
+            when (ex
+                    is HttpRequestException
+                        or JsonException
+                        or NotSupportedException
+                        or TaskCanceledException
+            )
         {
             LogDiscoveryFailed(ex, wellKnown);
             return new LaunchOutcome.DiscoveryFailed(wellKnown, ex.Message);
@@ -190,6 +212,9 @@ public sealed partial class SmartLaunch(
                 wellKnown,
                 "the server returned an empty configuration"
             );
+
+        if (Elsewhere(iss, config) is { } published)
+            return new LaunchOutcome.DiscoveryFailed(wellKnown, published);
 
         var (verifier, challenge) = Smart.NewPkce();
         var state = Smart.NewState();
@@ -209,6 +234,30 @@ public sealed partial class SmartLaunch(
             configJson
         );
     }
+
+    /// <summary>
+    /// Why the endpoints this configuration published may not be used, or null if they may.
+    ///
+    /// The allowlist trusts an <em>origin</em>, and the path beneath it is the EHR's to
+    /// choose — which is exactly what lets the SMART App Launcher encode a whole simulation
+    /// into one. So whoever controls a path on a trusted host controls this document, and
+    /// these two fields are what it steers: <c>authorization_endpoint</c> is where this app
+    /// sends the browser, so one pointing elsewhere is an open redirect wearing this app's
+    /// domain, and <c>token_endpoint</c> is where it posts the authorization code, so one
+    /// pointing elsewhere is the code handed to a stranger.
+    ///
+    /// SMART requires neither to sit on the FHIR base's origin. This app requires it anyway,
+    /// because an origin is the whole of what it checked.
+    /// </summary>
+    private static string? Elsewhere(string iss, SmartConfiguration config) =>
+        Published(iss, "authorization_endpoint", config.AuthorizationEndpoint)
+        ?? Published(iss, "token_endpoint", config.TokenEndpoint);
+
+    private static string? Published(string iss, string name, string? endpoint) =>
+        string.IsNullOrEmpty(endpoint) ? $"it publishes no {name}"
+        : Smart.SameOrigin(iss, endpoint) ? null
+        : $"its {name} is on another origin than the FHIR server this app trusts, and this "
+            + "app follows neither an authorization request nor an authorization code off it";
 
     /// <summary>
     /// Trade the authorization code for an access token and read the patient it points
@@ -244,11 +293,13 @@ public sealed partial class SmartLaunch(
             }
         );
 
-        using var response = await clients.CreateClient().PostAsync(launch.TokenEndpoint, form, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
+        var (status, body, unreachable) = await ExchangeAsync(launch.TokenEndpoint, form, ct);
 
-        if (!response.IsSuccessStatusCode)
-            return new CallbackOutcome.TokenExchangeFailed((int)response.StatusCode, body);
+        if (unreachable is { } silence)
+            return new CallbackOutcome.TokenEndpointUnreachable(silence);
+
+        if (status is < 200 or >= 300)
+            return new CallbackOutcome.TokenExchangeFailed(status, body);
 
         TokenResponse? token;
         try
@@ -280,6 +331,30 @@ public sealed partial class SmartLaunch(
     }
 
     /// <summary>
+    /// What the token endpoint answered, or the reason it did not. Wrapped because the
+    /// clients carry a timeout: an EHR that goes quiet has to land on the same page as one
+    /// that answers badly, rather than as an exception out of the callback.
+    /// </summary>
+    private async Task<(int Status, string Body, string? Unreachable)> ExchangeAsync(
+        string tokenEndpoint,
+        FormUrlEncodedContent form,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            using var response = await clients.CreateClient().PostAsync(tokenEndpoint, form, ct);
+
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync(ct), null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            LogTokenEndpointUnreachable(ex, tokenEndpoint);
+            return (0, "", ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Who started this launch, if the EHR said and the claim can be trusted. Every way
     /// this can fail returns a sentence rather than throwing: the patient summary does
     /// not depend on it, and a launch that works should not be lost to an absent name.
@@ -302,6 +377,18 @@ public sealed partial class SmartLaunch(
                 null,
                 "The EHR's SMART configuration publishes no issuer and jwks_uri, so there is "
                     + "nothing to validate the id_token against. Unvalidated claims are not shown."
+            );
+
+        // The same rule the two discovered endpoints are refused for, with a different
+        // consequence: whoever answers at a jwks_uri decides which id_tokens this app
+        // believes. Identity degrades rather than failing, so this is a sentence and the
+        // launch goes on without a name.
+        if (!Smart.SameOrigin(launch.Iss, launch.JwksUri))
+            return (
+                null,
+                "The EHR publishes its signing keys on another origin than its FHIR server, so "
+                    + "they were not fetched. This app trusts an EHR by origin, and the keys that "
+                    + "decide which id_tokens it believes have to come from the one it trusts."
             );
 
         if (await jwks.KeysAsync(launch.JwksUri, ct) is not { Count: > 0 } keys)
@@ -423,12 +510,10 @@ public sealed partial class SmartLaunch(
         if (string.IsNullOrEmpty(fhirUser))
             return (null, null);
 
-        if (Location(iss, fhirUser) is not { } location)
-            return (
-                null,
-                "The id_token points at a FHIR server other than the one this launch is "
-                    + "for, so it was not followed — the access token belongs to this server alone."
-            );
+        var (location, refused) = Location(iss, fhirUser);
+
+        if (location is null)
+            return (null, refused);
 
         try
         {
@@ -451,15 +536,44 @@ public sealed partial class SmartLaunch(
     }
 
     /// <summary>
-    /// Where to read the launching user from, or null if the reference must not be followed.
+    /// Where to read the launching user from, or the reason the reference will not be
+    /// followed.
     ///
     /// SMART says fhirUser SHOULD be an absolute URL; the SMART App Launcher returns a
     /// relative one, so both are handled. An absolute reference to a different origin is
     /// refused rather than followed, because following it would send this server's access
     /// token to a server the token was never issued for.
+    ///
+    /// Which makes "is this absolute?" the load-bearing question, and
+    /// <c>Uri.IsWellFormedUriString</c> the wrong way to ask it: it answers false for
+    /// <c>//elsewhere.example/Practitioner/1</c> and for any absolute URL carrying a
+    /// character it would have to escape, and both of those resolve against the FHIR base to
+    /// a host that is not it. Every reference that is not absolute therefore has to look
+    /// like a reference — <c>ResourceType/id</c>, the only shape a relative one may take —
+    /// rather than merely fail to look absolute.
     /// </summary>
-    private static string? Location(string iss, string fhirUser) =>
-        !Uri.IsWellFormedUriString(fhirUser, UriKind.Absolute) ? fhirUser
-        : Smart.SameOrigin(iss, fhirUser) ? fhirUser
-        : null;
+    private static (string? Location, string? Refused) Location(string iss, string fhirUser) =>
+        Uri.TryCreate(fhirUser, UriKind.Absolute, out _) ? Absolute(iss, fhirUser)
+        : Reference().IsMatch(fhirUser) ? (fhirUser, null)
+        : (
+            null,
+            "The id_token's fhirUser is not a reference this app can place: neither an "
+                + "absolute URL nor a plain ResourceType/id. One it cannot place is one it "
+                + "cannot prove stays on this launch's server, so it was not followed."
+        );
+
+    private static (string? Location, string? Refused) Absolute(string iss, string fhirUser) =>
+        Smart.SameOrigin(iss, fhirUser)
+            ? (fhirUser, null)
+            : (
+                null,
+                "The id_token points at a FHIR server other than the one this launch is "
+                    + "for, so it was not followed — the access token belongs to this server alone."
+            );
+
+    /// <summary>
+    /// A relative FHIR reference: a resource type, and an id as FHIR itself defines one.
+    /// </summary>
+    [GeneratedRegex(@"^[A-Za-z]+/[A-Za-z0-9\-.]{1,64}$")]
+    private static partial Regex Reference();
 }

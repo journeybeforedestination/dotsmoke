@@ -131,6 +131,51 @@ public class SmartLaunchTests : IDisposable
         );
     }
 
+    [Theory]
+    [InlineData(
+        """{"authorization_endpoint":"https://elsewhere.example/authorize","token_endpoint":"https://ehr.example/token"}"""
+    )]
+    [InlineData(
+        """{"authorization_endpoint":"https://ehr.example/authorize","token_endpoint":"https://elsewhere.example/token"}"""
+    )]
+    public async Task A_configuration_naming_endpoints_off_the_issuers_origin_starts_no_launch(
+        string published
+    )
+    {
+        // The allowlist trusts an origin, and whoever controls a path beneath it controls
+        // this document — which is precisely what the launcher's simulation paths are. One
+        // of these two is where the browser is sent, and the other is where the code goes.
+        var smart = Smart(_ => Json(published));
+
+        var outcome = Assert.IsType<LaunchOutcome.DiscoveryFailed>(
+            await smart.BeginAsync(
+                Iss,
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
+
+        Assert.Contains("another origin", outcome.Reason);
+    }
+
+    [Fact]
+    public async Task A_configuration_missing_an_endpoint_says_which_one_rather_than_failing_later()
+    {
+        var smart = Smart(_ => Json("""{"token_endpoint":"https://ehr.example/token"}"""));
+
+        var outcome = Assert.IsType<LaunchOutcome.DiscoveryFailed>(
+            await smart.BeginAsync(
+                Iss,
+                "launch-123",
+                RedirectUri,
+                TestContext.Current.CancellationToken
+            )
+        );
+
+        Assert.Contains("no authorization_endpoint", outcome.Reason);
+    }
+
     [Fact]
     public async Task A_prepared_launch_carries_what_the_callback_will_need()
     {
@@ -281,6 +326,29 @@ public class SmartLaunchTests : IDisposable
 
         Assert.Equal(400, outcome.Status);
         Assert.Contains("invalid_grant", outcome.Reason);
+    }
+
+    [Fact]
+    public async Task A_token_endpoint_that_does_not_answer_is_a_sentence_not_an_exception()
+    {
+        // The clients carry a timeout, so this is a way a callback can end rather than a
+        // way it can throw — and there is no status to report, because nothing answered.
+        var smart = Smart(_ => throw new HttpRequestException("connection refused"));
+
+        var outcome = Assert.IsType<CallbackOutcome.TokenEndpointUnreachable>(
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    null,
+                    null,
+                    Session,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
+        );
+
+        Assert.Contains("connection refused", outcome.Reason);
     }
 
     [Fact]
@@ -585,6 +653,77 @@ public class SmartLaunchTests : IDisposable
         Assert.Null(completed.User);
         Assert.Contains("other than the one this launch is for", completed.UserUnavailable);
         Assert.DoesNotContain(asked, url => url.Contains("elsewhere.example"));
+    }
+
+    [Fact]
+    public async Task Signing_keys_published_off_the_issuers_origin_are_not_fetched()
+    {
+        var asked = new List<string>();
+
+        var smart = Completing(
+            TokenJsonWith(TestIdTokens.Token()),
+            observe: request => asked.Add(request.RequestUri!.ToString()),
+            jwks: TestIdTokens.JwksJson(TestIdTokens.Ehr)
+        );
+
+        var completed = Assert.IsType<CallbackOutcome.Completed>(
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    error: null,
+                    errorDescription: null,
+                    SsoSession with
+                    {
+                        JwksUri = "https://elsewhere.example/keys",
+                    },
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
+        );
+
+        // Whoever answers at a jwks_uri decides which id_tokens this app believes, so it
+        // has to be the EHR the app trusts. Identity degrades rather than failing: the
+        // launch stands, and the summary is still read.
+        Assert.Null(completed.Identity);
+        Assert.Contains("another origin", completed.IdentityUnavailable);
+        Assert.DoesNotContain(asked, url => url.Contains("elsewhere.example"));
+        Assert.Equal("Alex Rivera", completed.Summary.Name);
+    }
+
+    [Theory]
+    // None of these is a well-formed absolute URL, and .NET says so — which is why asking
+    // that question was the wrong guard. The first two resolve against the FHIR base to a
+    // host that is not it; the third is not a reference this app can place at all.
+    [InlineData("//elsewhere.example/Practitioner/prac-1")]
+    [InlineData("https://elsewhere.example/a b/Practitioner/prac-1")]
+    [InlineData("../../Practitioner/prac-1")]
+    public async Task A_fhirUser_that_merely_fails_to_look_absolute_is_not_followed(string fhirUser)
+    {
+        var asked = new List<string>();
+
+        var smart = Completing(
+            TokenJsonWith(TestIdTokens.Token(fhirUser: fhirUser)),
+            observe: request => asked.Add(request.RequestUri!.ToString()),
+            jwks: TestIdTokens.JwksJson(TestIdTokens.Ehr)
+        );
+
+        var completed = Assert.IsType<CallbackOutcome.Completed>(
+            (
+                await smart.CompleteAsync(
+                    "the-code",
+                    "the-state",
+                    error: null,
+                    errorDescription: null,
+                    SsoSession,
+                    TestContext.Current.CancellationToken
+                )
+            ).Outcome
+        );
+
+        Assert.Null(completed.User);
+        Assert.NotNull(completed.UserUnavailable);
+        Assert.DoesNotContain(asked, url => url.Contains("Practitioner"));
     }
 
     [Fact]
