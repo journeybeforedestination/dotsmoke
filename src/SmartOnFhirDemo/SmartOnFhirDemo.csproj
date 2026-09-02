@@ -22,6 +22,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      Kamal refuses to deploy an image whose `service` label does not match the `service`
+      in config/deploy.yml, and it checks this on every deploy, including one that only
+      pulls. It sets the label itself on images it builds; this one is built by the SDK,
+      so the label has to be declared. The value is the one string this file and
+      config/deploy.yml must agree on.
+    -->
+    <ContainerLabel Include="service" Value="dotsmoke" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Hl7.Fhir.R4" Version="6.4.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
