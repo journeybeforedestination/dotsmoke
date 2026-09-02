@@ -1,0 +1,72 @@
+# Kamal deploys an image it did not build. CI's `publish` job pushes to GHCR and this
+# file only says where that image runs and how it is fronted; `kamal deploy --skip-push`
+# is the supported way to run an image Kamal never built.
+
+service: dotsmoke
+
+# The repository without the registry — `registry.server` below supplies that — and
+# without a tag: the version is passed per deploy as --version=<commit>. There is no
+# `latest` to fall back to, which is deliberate; a moving tag is the one thing a
+# rollback cannot use.
+image: journeybeforedestination/dotsmoke
+
+servers:
+  web:
+    - 157.230.87.202
+
+proxy:
+  host: dotsmoke.wastebook.dev
+
+  # The port the image exposes, from the base image's ASPNETCORE_HTTP_PORTS, rather than
+  # kamal-proxy's default of 80. Nothing in this repo sets it: it is inferred by the SDK
+  # container target, and reading it back out of the published image is how it was
+  # confirmed.
+  app_port: 8080
+
+  # kamal-proxy obtains and renews a Let's Encrypt certificate itself, which needs both
+  # 80 and 443 reachable on this host — hence no Cloud Firewall on the droplet.
+  #
+  # It also stops forwarding X-Forwarded-* headers when this is true, which this app
+  # wants rather than tolerates: it is told its origin through Smart__PublicOrigin below
+  # and never infers one. See CLAUDE.md's Traps section before "fixing" that.
+  ssl: true
+
+  # No healthcheck block: /up is kamal-proxy's default path and the app already answers
+  # there, so matching it means configuring nothing.
+
+registry:
+  server: ghcr.io
+  username: journeybeforedestination
+  # Looked up in .kamal/secrets. Required even though the package is public — Kamal
+  # validates username and password for any non-localhost registry and logs in on the
+  # server before pulling, whether or not the pull would have needed credentials.
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  # Kamal builds nothing here, but it still checks that the image it pulled matches this
+  # architecture. DigitalOcean's Basic droplets are x86-64 only.
+  arch: amd64
+
+# Everything this app keeps: the access log database and the data protection key ring.
+# One host directory for both, so replacing the container — which is what a deploy does —
+# does not lose the log, or invalidate the antiforgery token of a reader paused mid-launch.
+#
+# The container runs as UID 1654, not root, and a fresh mount is root-owned. The deploy
+# job creates and chowns this directory before Kamal runs; see the comment there.
+volumes:
+  - /var/lib/dotsmoke:/data
+
+env:
+  clear:
+    # The address readers reach this app on. Told, never inferred from a request: this is
+    # the one line the whole forwarded-headers trap in CLAUDE.md exists to protect, and
+    # the session cookie's Secure flag is derived from its scheme.
+    Smart__PublicOrigin: https://dotsmoke.wastebook.dev
+
+    # Both under the volume above. The app creates neither directory, so the mount is
+    # what has to exist and be writable.
+    ConnectionStrings__AccessLog: Data Source=/data/app.db
+    DataProtection__KeyRing: /data/keys
+
+    ASPNETCORE_ENVIRONMENT: Production
