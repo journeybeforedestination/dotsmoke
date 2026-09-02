@@ -151,7 +151,7 @@ jobs:
       contents: read
       packages: read
     env:
-      HOST: 157.230.87.202
+      HOST: dotsmoke.wastebook.dev
       # Resolved by .kamal/secrets, and short-lived: this token is minted for this run
       # and expires with it, so the server holds no standing credential of ours.
       KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}

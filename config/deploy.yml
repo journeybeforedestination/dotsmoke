@@ -10,9 +10,12 @@ service: dotsmoke
 # rollback cannot use.
 image: journeybeforedestination/dotsmoke
 
+# By name, not by address. The `A` record already points here, so rebuilding the droplet
+# is a DNS change rather than a commit. `ci.yml`'s HOST must stay the same string: it
+# writes the ~/.ssh/config `Host` pattern that net-ssh matches against what it dials.
 servers:
   web:
-    - 157.230.87.202
+    - dotsmoke.wastebook.dev
 
 proxy:
   host: dotsmoke.wastebook.dev
