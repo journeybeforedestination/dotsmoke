@@ -428,25 +428,20 @@ by hand.
 The public instance is <https://dotsmoke.wastebook.dev>, and what you give the launcher
 as **App's Launch URL** is `https://dotsmoke.wastebook.dev/learn` or `.../launch`.
 
-Deploying is something a person runs, not something a merge does. CI's job ends at the
-image; putting one on a server is a separate, deliberate act. That is a choice rather
-than an omission — a deploy key that can root the server stays on one laptop instead of
-living in a repository secret, and nothing reaches the internet without somebody deciding
-it should. The cost is drift: what is running stops being derivable from the log, and
-`kamal app version` becomes the only honest answer to what is live.
+Every merge to `main` deploys. The `deploy` job in `ci.yml` needs the `publish` job, so
+it runs against an image that already exists, and does no more than:
 
 ```bash
-export KAMAL_REGISTRY_PASSWORD=$(gh auth token)
-kamal deploy --skip-push --version=$(git rev-parse main)
+kamal deploy --skip-push --version=<commit>
 ```
 
 `--skip-push` is what makes this work on an image Kamal did not build. Without it Kamal
 would build its own from a Dockerfile this repo does not have; with it, Kamal pulls the
-tag CI pushed, so the bytes that were attested are the bytes that run, and a rollback
-names an image that provably came out of a merge.
+tag `publish` pushed, so the bytes that were attested are the bytes that run, and the
+image named in a rollback is one that provably came out of a merge.
 
-The registry password is a credential Kamal insists on even for a public package, so it
-is fetched from the `gh` login already on the machine rather than stored anywhere.
+**Do not make `Deploy to the droplet` a required check.** Like `integration`, it never
+runs on `pull_request`, so requiring it would block every pull request permanently.
 
 Configuration is `config/deploy.yml`, and the comments there say why each value is what
 it is. The shape of it: one DigitalOcean droplet, kamal-proxy on :80 and :443 with a
@@ -454,30 +449,10 @@ Let's Encrypt certificate it obtains and renews itself, forwarding to the app co
 :8080 — the port the base image exposes, not kamal-proxy's default of 80. `/up` needs no
 configuring because it is already kamal-proxy's default path.
 
-### Setting up to deploy
-
-Kamal is a Ruby gem rather than anything this repo builds:
-
-```bash
-gem install kamal -v 2.12.0
-```
-
-It reaches servers through net-ssh, not through the `ssh` binary, and net-ssh looks only
-in `ssh-agent` and at the default identity filenames — `id_rsa`, `id_dsa`, `id_ecdsa`,
-`id_ed25519`. A key at any other path is invisible to it no matter how well `ssh -i`
-works. So the deploy key must either carry one of those names, be loaded into an agent,
-or be named for the host in `~/.ssh/config`. The symptom otherwise is an authentication
-failure that looks like a server problem and is not.
-
-Once per server, before its first deploy:
-
-```bash
-kamal server bootstrap
-ssh root@157.230.87.202 'mkdir -p /var/lib/dotsmoke && chown 1654:1654 /var/lib/dotsmoke'
-```
-
-`bootstrap` installs Docker; nothing else on that droplet was set up by hand. The second
-command is the one thing Kamal does not get right on its own — see below.
+Nothing on that droplet was set up by hand. `kamal server bootstrap` installs Docker, and
+the deploy job runs it on every deploy because it costs nothing once Docker is there; the
+practical effect is that a droplet rebuilt from bare Ubuntu needs no ceremony to become
+the deploy target again.
 
 ### The volume, and the user that has to own it
 
@@ -486,10 +461,11 @@ keeps: `app.db` and the `keys/` ring. One directory for both, so a deploy — wh
 replaces the container — loses neither the access log nor the antiforgery token of a
 reader paused mid-launch.
 
-It has to be given to UID 1654 before the first deploy, because the container does not run
-as root and a freshly mounted directory does. 1654 is the image's user, read from the
-image rather than assumed — published sources disagree on the number and `dotnet-docker`
-has changed it before, so if a base image update ever moves it, read the new one:
+The deploy job creates that directory and gives it to UID 1654 before Kamal runs. It has
+to: the container does not run as root, and a freshly mounted directory does. 1654 is the
+image's user, read from the image rather than assumed — published sources disagree on the
+number and `dotnet-docker` has changed it before, so if a base image update ever moves it,
+read the new one and change the job:
 
 ```bash
 docker inspect ghcr.io/journeybeforedestination/dotsmoke:<commit> --format '{{.Config.User}}'
@@ -508,21 +484,45 @@ than solved: one droplet, one file, and migrations that add. It is named here, a
 `Database.Migrate()` call in `Program.cs`, because it is the case that comment used to
 wave at as somebody else's problem.
 
-### What is secret, and what only looks it
+### Deploying by hand
 
-Nothing the app holds. `Smart:TrustedIssuers` and `Smart:PublicOrigin` are public facts,
-which is why `config/deploy.yml` carries them in the clear, and why `.kamal/secrets`
-names one value and stores none.
+Still supported, and the route for a rollback or for watching a deploy that is behaving
+oddly. Kamal is a Ruby gem rather than anything this repo builds:
 
-The only credential in this system is the SSH key that reaches the server, and while
-deploys are manual it never leaves the machine that deploys. Making a deploy key a
-repository secret is what it would cost to have merges deploy themselves; that trade is
-open rather than settled.
+```bash
+gem install kamal -v 2.12.0
+export KAMAL_REGISTRY_PASSWORD=$(gh auth token)
+kamal deploy --skip-push --version=$(git rev-parse main)
+```
+
+Kamal reaches servers through net-ssh, not through the `ssh` binary, and net-ssh looks
+only in `ssh-agent` and at the default identity filenames — `id_rsa`, `id_dsa`,
+`id_ecdsa`, `id_ed25519`. A key at any other path is invisible to it no matter how well
+`ssh -i` works. So the deploy key must either carry one of those names, be loaded into an
+agent, or be named for the host in `~/.ssh/config`. The symptom otherwise is an
+authentication failure that looks like a server problem and is not.
+
+### Secrets, and the trade behind them
+
+Two, and neither belongs to the app. `DOTSMOKE_DEPLOY` is the private half of an SSH key
+made for this and nothing else, so the worst it can do is reach one $12 droplet. The
+registry password is the `GITHUB_TOKEN` minted for the workflow run, passed through
+`.kamal/secrets` and expiring with the run, so the server is left holding no standing
+credential — Kamal requires registry credentials even though the package is public, and
+this is the cheapest way to satisfy it.
+
+What that buys is a merge that reaches the internet unattended. What it costs is stated
+plainly: write access to this repository is now equivalent to root on that droplet,
+because any workflow run here can read the key. Deploying by hand — which is how this
+first ran, and how it is documented above — is what that trade would be reversed to.
+
+Nothing the app itself holds is secret. `Smart:TrustedIssuers` and `Smart:PublicOrigin`
+are public facts, which is why `config/deploy.yml` carries them in the clear.
 
 ### Rolling back
 
 Reverting the commit and merging is the normal route, and it goes through the same gate
-everything else does. The faster one:
+everything else does. The faster one, with Kamal installed and the deploy key reachable:
 
 ```bash
 kamal rollback <earlier-commit>
@@ -655,10 +655,9 @@ migrations and, in CI, checks they still match the model. None of them ships in
 anything.
 
 Kamal 2.12.0 (MIT) is the one dependency that is neither a NuGet package nor a `dotnet`
-tool: it is a Ruby gem, installed on whichever machine deploys and used nowhere else. It
-ships in nothing, nothing in CI installs it, and the app has no idea it exists. Pinned
-for the reason the tools are — an unpinned deploy tool is a deploy that can change
-without a commit.
+tool: it is a Ruby gem, installed by the deploy job on the runner and used nowhere else.
+It ships in nothing and the app has no idea it exists. Pinned for the reason the tools
+are — an unpinned deploy tool is a deploy that can change without a commit.
 
 ## License
 

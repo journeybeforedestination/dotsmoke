@@ -138,6 +138,72 @@ jobs:
           subject-name: ghcr.io/journeybeforedestination/dotsmoke
           subject-digest: ${{ steps.image.outputs.digest }}
 
+  deploy:
+    name: Deploy to the droplet
+    # Merges only, and after the image it names exists rather than beside it.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The server logs in to ghcr.io with this job's token before pulling. Read only:
+    # nothing here writes to the registry.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      HOST: 157.230.87.202
+      # Resolved by .kamal/secrets, and short-lived: this token is minted for this run
+      # and expires with it, so the server holds no standing credential of ours.
+      KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Ruby is already on the runner image, so only Kamal is missing. Pinned: an
+      # unpinned deploy tool is a deploy that can change without a commit.
+      #
+      # sudo because the runner's default ruby is apt's, which installs gems into a
+      # root-owned /var/lib/gems — the image makes /usr/share and /opt world-writable
+      # but not that. Without it this either fails on permissions or falls back to a
+      # user install whose bin directory is not on PATH, and both land as a failure in
+      # the step after this one.
+      - name: Install Kamal
+        run: sudo gem install --no-document kamal -v 2.12.0
+
+      # Written where both ssh and Kamal's net-ssh already look, so neither is told about
+      # it. ssh-keyscan rather than a pinned host key: the droplet's key changes if it is
+      # ever rebuilt, and a stale pin fails with an error about host keys rather than
+      # about the rebuild. What that accepts is one run's registry token, to anyone in a
+      # position to impersonate the host on the way there.
+      - name: Load the deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.DOTSMOKE_DEPLOY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # Both idempotent, and both nearly free once they have run. Together they mean a
+      # droplet rebuilt from a bare Ubuntu image needs no setting up by hand: bootstrap
+      # installs Docker, and the directory is the one thing Kamal does not get right on
+      # its own.
+      #
+      # 1654 is the UID the image runs as, read out of the published image's config
+      # rather than assumed — published sources disagree, and dotnet-docker has changed
+      # it before. A freshly mounted directory is root-owned and the app is not root, so
+      # getting this wrong shows up as the start-up migration throwing before anything
+      # serves. Loud, and it takes the deploy with it rather than the old container.
+      - name: Prepare the server
+        run: |
+          kamal server bootstrap
+          ssh root@"$HOST" 'mkdir -p /var/lib/dotsmoke && chown 1654:1654 /var/lib/dotsmoke'
+
+      # --skip-push is the documented way to run an image Kamal did not build: it pulls
+      # on the server instead of building here. --version names this commit's image, the
+      # one the job above pushed and attested.
+      - name: Deploy
+        run: kamal deploy --skip-push --version=${{ github.sha }}
+
   integration:
     name: Integration tests against a live launcher
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
