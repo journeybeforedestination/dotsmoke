@@ -47,6 +47,29 @@ ssh root@<host> 'mkdir -p /var/lib/dotsmoke && chown 1654:1654 /var/lib/dotsmoke
 and the `keys/` ring, owned by the image's non-root user — the container cannot
 write a freshly mounted directory otherwise.
 
+Neither file is encrypted at rest, and one of them is a log of who read which chart.
+Against the public launcher that is synthetic data; point `Smart:TrustedIssuers` at a
+real EHR and `/var/lib/dotsmoke/app.db` is PHI on a droplet with no disk encryption.
+
+Then the parts a firewall would usually cover. kamal-proxy renews its certificate
+itself, so 80 and 443 have to stay open to the world, which leaves the SSH port as
+the thing to close down rather than off:
+
+```bash
+ssh root@<host> 'sshd -T | grep -E "^(passwordauthentication|permitrootlogin)"'
+ssh root@<host> 'cat ~/.ssh/authorized_keys'   # the deploy key, and what else?
+ssh root@<host> 'docker ps --format "{{.Names}}\t{{.Ports}}"'
+```
+
+Wanted: `passwordauthentication no`, `permitrootlogin prohibit-password`, nothing in
+`authorized_keys` that is not accounted for, and nothing publishing a port but the
+proxy. A DigitalOcean Cloud Firewall allowing 22, 80 and 443 and refusing the rest
+does not get in ACME's way, and is worth having over none.
+
+The `production` environment is the last piece, and it is a repository setting rather
+than a command: it holds `DOTSMOKE_DEPLOY`, and its deployment branch policy names
+`main` and nothing else. See [Secrets](#secrets) for what that buys.
+
 Kamal waits for the new container's health check before stopping the old one, so
 every deploy has a few seconds where two processes have the SQLite file open. This
 is accepted rather than solved: one droplet, one file, migrations that add.
@@ -56,8 +79,20 @@ is accepted rather than solved: one droplet, one file, migrations that add.
 Two, and neither belongs to the app: an SSH key made for this droplet and nothing
 else, and the `GITHUB_TOKEN` minted for the workflow run, which expires with it. So
 the server holds no standing credential, and nothing the app itself holds is secret
-— which is why `config/deploy.yml` carries its settings in the clear.
+— which is why `config/deploy.yml` carries its settings in the clear. Kamal logs the
+droplet in to ghcr.io with that token before pulling, which leaves it in root's
+`~/.docker/config.json` there; it is expired within hours of the run that minted it.
 
-What that buys is a merge that reaches the internet unattended. What it costs:
-write access to this repository is equivalent to root on that droplet, because any
-workflow run here can read the key. Deploying by hand reverses that trade.
+The key is an *environment* secret, on `production`, rather than a repository one.
+That is not a formality. A repository secret is readable by any workflow run, and a
+run on a pull request from a branch of this repository is one of those: it is handed
+the secrets, and it runs the workflow file from that branch. So with the key at the
+repository, nothing between a push and root on the droplet — no merge, no review, no
+green check. An environment secret is readable only by a job that names its
+environment, and this environment's deployment branch policy is `main` alone, so a
+job naming it from anywhere else is refused before its first step.
+
+What that key can do is unchanged: Kamal reaches a server over SSH and runs `docker`
+there, and a user in the `docker` group is root under another name. The environment
+bounds who can reach the key, not what it is. Keeping no key in GitHub at all is the
+other end of the trade, and deploying by hand above is how.

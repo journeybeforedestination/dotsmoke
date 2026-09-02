@@ -145,6 +145,18 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # What keeps the deploy key out of reach of everything except this job.
+    #
+    # A repository secret is readable by any workflow run, and a `pull_request` run from a
+    # branch of this repository is one — it gets the secrets and it runs the workflow file
+    # from that branch. So with the key stored at the repository, a push that nobody
+    # reviewed and nothing merged could read it, and the key is root on the droplet.
+    #
+    # An environment secret is readable only by a job naming its environment, and this
+    # environment's deployment branch policy is `main` alone. A job on any other branch that
+    # names it is refused before its first step runs. The deploy stays unattended; what
+    # closes is the path that did not need a merge.
+    environment: production
     # The server logs in to ghcr.io with this job's token before pulling. Read only:
     # nothing here writes to the registry.
     permissions:
@@ -192,6 +204,18 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf 'Host %s\n  StrictHostKeyChecking accept-new\n' "$HOST" > ~/.ssh/config
           chmod 600 ~/.ssh/config
+
+      # The attestation the publish job filed is worth producing only if something reads
+      # it. Kamal deploys a tag, and a tag is a label that can be moved — by anything that
+      # can write to the package. This asks GitHub whether the bytes that tag names now are
+      # the bytes this repository's workflow built, and fails the deploy if they are not.
+      - name: Verify the image this deploy will pull
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh attestation verify
+          oci://ghcr.io/journeybeforedestination/dotsmoke:${{ github.sha }}
+          --repo ${{ github.repository }}
 
       # --skip-push is the documented way to run an image Kamal did not build: it pulls
       # on the server instead of building here. --version names this commit's image, the
