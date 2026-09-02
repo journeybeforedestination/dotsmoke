@@ -1,7 +1,9 @@
 # dotsmoke
 
-README.md covers architecture, running, tests, formatting, analyzers, toolchain
-pins and CI. This file is only what it does not say.
+README.md is the front door: what this app is, how to launch it, and what SMART
+demands. `docs/` covers the rest — configuration, design, development (tests, CI,
+formatting, analyzers, the toolchain) and deploying. This file is only what
+neither says.
 
 ## Branching
 
@@ -11,14 +13,17 @@ the pull request to me.
 
 ## Commits
 
-Run the README's CI sequence locally first and report what it said. Run
-`dotnet csharpier format .` before checking, or your own edits will fail it.
+Run the CI sequence in `docs/development.md` locally first and report what it
+said. Run `dotnet csharpier format .` before checking, or your own edits will
+fail it.
 
 Tooling and the churn it implies are separate commits, and code lands before
 the gate that would reject it (682ddee, 348bdf0, ad4fca6). A commit that turns
 a check on should be green on arrival.
 
-When a change makes a README statement false, fix it in the same commit.
+When a change makes a statement in README.md or `docs/` false, fix it in the
+same commit. Both are for readers: record *why* in a comment beside the code, not
+in new prose there.
 
 ## Settled — don't re-litigate without new evidence
 
@@ -58,5 +63,24 @@ Docker-assigned fact into the app, failing as a redirect loop when it drifts.
 absolute URL and the session cookie's `Secure` flag from it. The failure it prevents
 is not an outage — the launch works either way — but the cookie authenticating a
 patient summary being marked as safe to send in clear, silently.
+
+Kamal reaches servers through net-ssh, not the `ssh` binary, and net-ssh looks
+only in `ssh-agent` and at the default identity filenames — `id_rsa`, `id_dsa`,
+`id_ecdsa`, `id_ed25519`. A key at any other path is invisible to it however well
+`ssh -i` works, and the symptom is an authentication failure that reads as a
+server problem.
+
+Publishing for a runtime the project does not name in `RuntimeIdentifiers`
+rewrites the lock file as a side effect. The next `--locked-mode` restore then
+fails with `NU1004`, having been handed a lock file describing a project it no
+longer matches. This is why the app's lock file names `net10.0/linux-x64` beside
+the plain target — the native SQLite binary resolves only there.
+
+A `/data` mount not owned by the image's UID 1654 stops the start-up migration
+before the app serves, so `/up` never answers and Kamal aborts with the previous
+container still running. It reads as a health-check timeout rather than as a
+permissions problem. Read the UID from the image rather than assuming it —
+published sources disagree and `dotnet-docker` has changed it before:
+`docker inspect <image> --format '{{.Config.User}}'`.
 
 Comments here say *why*, not *what*. Test names are sentences.

@@ -3,7 +3,7 @@ namespace SmartOnFhirDemo.IntegrationTests;
 /// <summary>
 /// Where the SMART App Launcher is running. It is started outside the tests, because
 /// reaching the Docker socket from the test process would mean putting this user in
-/// the root-equivalent docker group. See the README for the command.
+/// the root-equivalent docker group. See docs/development.md for the command.
 /// </summary>
 internal static class Launcher
 {

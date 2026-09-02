@@ -6,7 +6,7 @@ namespace SmartOnFhirDemo.IntegrationTests;
 /// Points the tests at a running SMART App Launcher. Omarchy deliberately keeps
 /// users out of the root-equivalent <c>docker</c> group, so the container is not
 /// started from here — it is expected to be up already, and the tests that need
-/// it skip when it is not. See the README for the one command that starts it.
+/// it skip when it is not. See docs/development.md for the one command that starts it.
 /// </summary>
 public sealed class LauncherFixture : AppFixture, IAsyncLifetime
 {

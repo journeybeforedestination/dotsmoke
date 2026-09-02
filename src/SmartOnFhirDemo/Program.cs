@@ -73,7 +73,7 @@ app.Services.GetRequiredService<IStartupValidator>().Validate();
 // new container and waits for its health check before stopping the old one, so for a few
 // seconds two processes hold this file and one of them migrates while the other is still
 // serving. Accepted knowingly — one droplet, one SQLite file, migrations that add — and
-// recorded in the README's deployment section. With real replicas, migrating is a deploy
+// recorded in docs/deploying.md. With real replicas, migrating is a deploy
 // step run once rather than a race between processes starting.
 using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<AccessLogContext>().Database.Migrate();

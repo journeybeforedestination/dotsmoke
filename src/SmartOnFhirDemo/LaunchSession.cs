@@ -120,7 +120,7 @@ public static class BrowserSession
                 // a proxy that terminates TLS the request arrives as plain http, and
                 // deriving the flag from it would mark the cookie that authenticates a
                 // patient summary as safe to send in clear — silently, on a public host.
-                // On the README's http://localhost:5000 it is false, which is what keeps
+                // On the default http://localhost:5000 origin it is false, which is what keeps
                 // those instructions working.
                 Secure = secure,
             }
