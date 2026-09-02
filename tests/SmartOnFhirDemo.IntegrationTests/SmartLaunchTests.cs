@@ -14,7 +14,9 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     public static bool LauncherIsRunning => Launcher.IsRunning;
 
     private const string NeedsLauncher =
-        "Needs a running SMART App Launcher; set " + Launcher.UrlVariable + " (see the README).";
+        "Needs a running SMART App Launcher; set "
+        + Launcher.UrlVariable
+        + " (see docs/development.md).";
 
     private static readonly string[] SummaryLabels =
     [
