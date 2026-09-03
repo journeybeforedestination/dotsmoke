@@ -65,7 +65,11 @@ public abstract record ChartOutcome
     /// </summary>
     public sealed record Denied(ChartPanel Panel, int Status) : ChartOutcome;
 
-    public sealed record Unavailable(ChartPanel Panel, int Status, string Reason) : ChartOutcome;
+    /// <param name="Status">
+    /// What the EHR answered with, or null when nothing was sent — a call this app held
+    /// back, or one that never reached a server, has no status to report.
+    /// </param>
+    public sealed record Unavailable(ChartPanel Panel, int? Status, string Reason) : ChartOutcome;
 
     /// <summary>
     /// The launch went away between the page resolving it and this read. Only a token
@@ -171,6 +175,18 @@ public sealed partial class Chart(
                     (int)ex.Status,
                     LaunchMessages.Describe(ex.Outcome) ?? ex.Message
                 );
+        }
+        // Firely does not wrap transport failures: BaseFhirClient hands the request to
+        // HttpClient without a try/catch, so these arrive here untouched and would
+        // otherwise escape the panel read and lose the whole summary to /error.
+        // TaskCanceledException for the same reason the launch names it — the clients
+        // carry a timeout, and an EHR that goes quiet is one panel's problem, not the
+        // page's.
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            LogPanelFailed(ex, panel.Slug);
+
+            return new ChartOutcome.Unavailable(panel, null, ex.Message);
         }
     }
 

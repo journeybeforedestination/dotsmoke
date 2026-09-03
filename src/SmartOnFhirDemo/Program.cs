@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
@@ -36,10 +37,22 @@ builder.Services.AddHttpClient(
 // launch that was authorized rather than to anyone who can open a URL.
 builder.Services.AddHttpClient(FhirClients.Name);
 
-// The default is 100 seconds, which is a long time to hold a request open on behalf of
-// someone who only had to type a URL to start it.
+// One limiter for the process, and a singleton because of it: IHttpClientFactory pools
+// handler chains and gives each its own scope, so anything less would be a cap per pooled
+// chain, which is no cap at all and fails by working. See EhrTraffic.
+builder.Services.AddSingleton(_ => EhrTraffic.Limiter());
+builder.Services.AddTransient(services => new EhrTrafficHandler(
+    services.GetRequiredService<ConcurrencyLimiter>(),
+    EhrTraffic.MaxWait
+));
+
+// The default timeout is 100 seconds, which is a long time to hold a request open on
+// behalf of someone who only had to type a URL to start it. Both this and the limiter go
+// on the defaults rather than on each registration, so a client added later cannot forget
+// either one.
 builder.Services.ConfigureHttpClientDefaults(http =>
     http.ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(30))
+        .AddHttpMessageHandler<EhrTrafficHandler>()
 );
 builder.Services.AddScoped<SmartLaunch>();
 builder.Services.AddScoped<FhirClients>();

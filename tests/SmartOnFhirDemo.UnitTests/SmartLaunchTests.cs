@@ -1191,6 +1191,21 @@ public class SmartLaunchTests : IDisposable
     }
 
     [Fact]
+    public async Task An_ehr_that_cannot_be_reached_costs_one_panel_rather_than_the_page()
+    {
+        // Firely does not wrap transport failures, so an unwrapped one used to escape the
+        // panel read and take the whole summary to /error.
+        var outcome = Assert.IsType<ChartOutcome.Unavailable>(
+            await PanelAsync(_ => throw new HttpRequestException("the EHR went away"))
+        );
+
+        // Nothing was sent, so there is no status, and a rendered 0 would read as nonsense.
+        Assert.Null(outcome.Status);
+        Assert.Contains("The EHR could not be reached for conditions", LaunchMessages.For(outcome));
+        Assert.DoesNotContain("0", LaunchMessages.For(outcome));
+    }
+
+    [Fact]
     public async Task A_panel_asked_for_by_a_browser_that_did_not_launch_it_reads_nothing()
     {
         var (chart, _, context) = await EstablishedAsync(_ =>
