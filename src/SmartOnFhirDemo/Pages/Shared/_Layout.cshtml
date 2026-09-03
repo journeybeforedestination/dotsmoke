@@ -5,11 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@ViewData["Title"] · SMART on FHIR demo</title>
     @*
-        One inline block, still: the app serves no static files and its content security
-        policy allows a stylesheet nowhere else. Colour is spelled as tokens rather than
-        as literals at each use, because the dark theme is the same design with six
-        values swapped, and anything that reaches for a literal is a value that will not
-        swap with it.
+        The chart's tabs, swapped in place instead of navigated to. Deferred because it
+        reaches for elements in the body, and left off every page that has no chart on it
+        only by the script's own check — one file is cheaper to serve than a layout that
+        reasons about which page it is rendering.
+    *@
+    <script src="~/app.js" defer></script>
+    @*
+        One inline block, still. The app serves a static file now — the script above — but
+        the stylesheet stays here: it is the whole design, it is small, and a page of
+        patient data that renders naked while its stylesheet is still in flight is worse
+        than one saved request is worth. Colour is spelled as tokens rather than as
+        literals at each use, because the dark theme is the same design with six values
+        swapped, and anything that reaches for a literal is a value that will not swap
+        with it.
     *@
     <style>
         :root {

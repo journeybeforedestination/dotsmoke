@@ -63,12 +63,30 @@ launch disagrees.
 ## The security headers are a pure function of one fact
 
 `SecurityHeaders.For` takes whether the public origin is `https` and returns what
-every response carries. The content security policy is `default-src 'none'`,
-because the app has no script to allow.
+every response carries. The content security policy is `default-src 'none'` and then
+three names back: `style-src` for the layout's one style block, and `script-src
+'self'` plus `connect-src 'self'` for `wwwroot/app.js` and the pane it fetches. Both
+are `'self'` rather than a hash because the script is a file — nothing inline is ever
+allowed to run, which is the relaxation that would have mattered.
 
 `Strict-Transport-Security` follows the configured origin rather than the request:
 behind a proxy that terminates TLS, `UseHsts` sees plain HTTP and emits nothing at
 all, silently.
+
+## A tab swaps the pane, or navigates
+
+`_App.cshtml` renders the tabs as plain links and the pane through `_Pane.cshtml`.
+Both `/summary` and `/learn/patient` answer `?handler=pane` with that same partial
+alone, so a swap and a navigation cannot render different chart panels — there is
+one piece of markup and it does not know which happened.
+
+The handler resolves the launch through the same guard the page does. Skipping it
+would have made the pane a second way to read a patient the launch does not name,
+which is the whole thing the page's own check exists to stop.
+
+A refusal answers with a status rather than a redirect, and the script's fallback is
+to navigate for real and land on `/error`. Swapping the refusal into the pane instead
+would leave the banner above it still naming a patient whose launch is gone.
 
 ## The walkthrough is a pure projection
 

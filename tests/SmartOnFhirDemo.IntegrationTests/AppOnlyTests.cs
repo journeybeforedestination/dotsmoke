@@ -121,6 +121,61 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         Assert.Contains("expired or was already completed", html);
     }
 
+    // ---- The pane a tab swaps in is behind the same guard as the page -----
+
+    [Theory]
+    [InlineData("/summary")]
+    [InlineData("/learn/patient")]
+    public async Task A_pane_asked_for_without_a_session_is_refused_rather_than_rendered(
+        string page
+    )
+    {
+        // The pane is a second way into the chart, so it is a second way to read a patient
+        // this browser never launched — unless it resolves the launch exactly as the page
+        // does. A status rather than a redirect: the script's answer to one is to navigate
+        // for real, which lands on the page that explains it.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(
+            $"{page}?handler=pane&id=never-issued&patient=123&show=conditions",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_pane_refuses_to_be_stored_for_the_same_reason_the_page_does()
+    {
+        // It carries the patient data the page carries, and the handler filter that says
+        // no-store is on the page rather than on one of its handlers.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(
+            "/summary?handler=pane&id=never-issued",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task The_script_the_tabs_need_is_served_and_the_policy_allows_it()
+    {
+        // It is the app's only static file, and it arrives through MapStaticAssets rather
+        // than through middleware this app does not otherwise have. Broken, the tabs fall
+        // back to reloading — which works, and would hide this for a long time.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(
+            "/app.js",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains(
+            "script-src 'self'",
+            response.Headers.GetValues("Content-Security-Policy").Single()
+        );
+    }
+
     [Fact]
     public async Task The_summary_refuses_to_be_stored()
     {

@@ -61,7 +61,14 @@ code out of the address bar and stops a refresh from re-sending a spent code.
 
 The launch lands on `/summary`, and that URL keeps working until the EHR's token
 runs out. Three panels read on from it — conditions, vital signs and medications —
-each a plain link, because this app has no JavaScript at all.
+each a plain link to a URL naming the panel, so every one of them is shareable and
+the back button works.
+
+Pressing one swaps the panel in place rather than reloading the page. That is the
+app's only JavaScript, and it is an enhancement: the page asks itself for the panel
+alone, and the same markup a navigation would have rendered goes into the same
+element. With the script blocked or still loading, the links navigate and the app is
+unchanged.
 
 Those reads are searches rather than reads by id: `Condition?patient={id}`, not
 `Condition/{id}`. That is what a `patient/Condition.read` scope authorises — a

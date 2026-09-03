@@ -133,7 +133,13 @@ app.Use(
     }
 );
 
-app.MapRazorPages();
+// The one static file this app serves, and what serves it. MapStaticAssets fingerprints
+// and precompresses at build time; WithStaticAssets is what lets the layout's plain
+// `src="~/app.js"` resolve to the fingerprinted name, and without it the tag renders the
+// unfingerprinted path — which still works, and quietly gives up the caching.
+app.MapStaticAssets();
+
+app.MapRazorPages().WithStaticAssets();
 
 // What a proxy asks before it sends a reader here. The path is kamal-proxy's default, so
 // matching it means a deployment configures no health check at all.
