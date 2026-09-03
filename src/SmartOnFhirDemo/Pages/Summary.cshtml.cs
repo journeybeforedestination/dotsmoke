@@ -14,15 +14,11 @@ namespace SmartOnFhirDemo.Pages;
 public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimeProvider clock)
     : PageModel
 {
-    public PatientSummary Summary { get; private set; } = default!;
-
-    public string RawJson { get; private set; } = "";
-
     /// <summary>Who started this launch, or why the app cannot say.</summary>
     public string WhoLaunchedIt { get; private set; } = "";
 
-    /// <summary>The panels this page offers, and whichever one it was asked to show.</summary>
-    public ChartView Chart { get; private set; } = default!;
+    /// <summary>The patient, the panels this page offers, and the resource behind them.</summary>
+    public AppView App { get; private set; } = default!;
 
     /// <param name="patient">
     /// The patient this page believes it is showing. Carried so the server can disagree:
@@ -43,17 +39,19 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
         switch (resolution)
         {
             case LaunchResolution.Resolved(var view):
-                Summary = view.Rendered.Summary;
-                RawJson = view.Rendered.RawJson;
                 WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(view.Rendered);
 
                 // By name, not by context: the credential stays below this page.
-                Chart = await chart.ViewAsync(
-                    "/summary",
-                    BrowserSession.Current(HttpContext),
-                    view.Facts,
-                    show,
-                    ct
+                App = new AppView(
+                    view.Rendered.Summary,
+                    await chart.ViewAsync(
+                        "/summary",
+                        BrowserSession.Current(HttpContext),
+                        view.Facts,
+                        show,
+                        ct
+                    ),
+                    view.Rendered.RawJson
                 );
 
                 return Page();

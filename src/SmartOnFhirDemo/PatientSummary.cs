@@ -45,13 +45,28 @@ public sealed record PatientSummary(
                 ?? Text(patient, "Patient.maritalStatus.coding.display.first()")
         );
 
-    /// <summary>Label/value pairs in display order, with a placeholder for absent data.</summary>
-    public IEnumerable<(string Label, string Value)> Fields =>
+    /// <summary>
+    /// What the banner calls this patient. A record with no name is a real thing to
+    /// arrive at, and a banner that renders it as blank looks like a page that failed
+    /// rather than a record that is thin.
+    /// </summary>
+    public string Banner => Name ?? "Unnamed patient";
+
+    /// <summary>
+    /// The line beneath the name: what tells one record from another at a glance. Absent
+    /// parts are left out rather than dashed — this line is read sideways, and an em dash
+    /// in it costs space to say nothing.
+    /// </summary>
+    public IEnumerable<string> Meta =>
+        new[] { Gender, BirthDate, Mrn is { } mrn ? $"MRN {mrn}" : null }.OfType<string>();
+
+    /// <summary>
+    /// The rest of the record, label/value in display order. Here the em dash is the
+    /// point: the field exists and this patient has nothing in it, which is not the same
+    /// as the app having failed to look.
+    /// </summary>
+    public IEnumerable<(string Label, string Value)> Details =>
         [
-            ("Name", Name ?? Absent),
-            ("Gender", Gender ?? Absent),
-            ("Birth date", BirthDate ?? Absent),
-            ("MRN", Mrn ?? Absent),
             ("Address", Address ?? Absent),
             ("Phone", Phone ?? Absent),
             ("Marital status", MaritalStatus ?? Absent),

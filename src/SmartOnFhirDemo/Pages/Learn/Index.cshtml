@@ -17,12 +17,12 @@
     <partial name="_Step" model="step" />
 }
 
-<p class="next">
-    <a class="button" href="@Model.AuthorizeUrl">Continue to the EHR &rarr;</a>
-</p>
+<nav class="next">
+    <a class="button go" href="@Model.AuthorizeUrl">Continue to the EHR &rarr;</a>
+</nav>
 
-<p class="aside">
+<aside>
     Your browser leaves this app now. What happens at the EHR — logging in, choosing a
     patient, granting consent — is the EHR's business, not the app's, and the app learns
     nothing about it beyond what comes back in the next step.
-</p>
+</aside>

@@ -45,7 +45,7 @@ public static class LaunchTranscript
         "Token",
         "Session",
         "Identity",
-        "Patient",
+        "App",
     ];
 
     /// <summary>
@@ -429,34 +429,20 @@ public static class LaunchTranscript
                     ?? "The id_token named nobody, so there was nothing to read."
             );
 
-    /// <summary>The one request all of the preceding was arranged to permit.</summary>
-    public static LaunchStep ThePatientRead(CallbackOutcome.Completed completed) =>
+    /// <summary>
+    /// The last stop, and the only one that annotates nothing. The reader has been
+    /// through the whole handshake by now; what is left is to see what it bought, which
+    /// is the app — so this step is a sentence and the page below it is the product.
+    /// </summary>
+    public static LaunchStep TheApp() =>
         new(
             8,
-            "Reading the patient",
-            "Everything up to here was arranged so that this one request could be made. It is an "
-                + "ordinary FHIR read.",
-            [
-                new StepField(
-                    "GET",
-                    completed.PatientUrl,
-                    "The FHIR base URL from step 1, and the patient id from step 5."
-                ),
-                new StepField(
-                    "Authorization",
-                    $"Bearer {Smart.Withheld}",
-                    "The token, presented as token_type said to — the whole of the app's claim to "
-                        + "read this record."
-                ),
-                new StepField(
-                    "Accept",
-                    "application/fhir+json",
-                    "Set by the Firely client, which also checks the server speaks this FHIR "
-                        + "version first."
-                ),
-            ],
-            "The Patient resource, exactly as the server returned it",
-            completed.RawJson
+            "The launch is done",
+            "The app now holds an access token, filed against your browser's session — it is "
+                + "authorized, and can go on reading this patient from the EHR for as long as the "
+                + "token lasts. Everything below is the app itself, the same page a plain launch "
+                + "lands on, with nothing explained.",
+            []
         );
 
     // ---- Helpers ----------------------------------------------------------

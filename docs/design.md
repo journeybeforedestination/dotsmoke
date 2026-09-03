@@ -76,8 +76,10 @@ all, silently.
 prose. It does no I/O and reaches nothing but what it is given, so the narrated
 launch is readable in one file and the pages stay markup.
 
-`/learn` ends on the same panels, from the same shared partial, through the same
-service — a walkthrough that left you with less than the plain launch would be
+Its last step annotates nothing. By then every exchange has been explained, so the
+page hands over: one sentence saying the launch is done, and beneath it the app
+itself — the same `AppView`, the same partial and the same service the plain launch
+lands on. A walkthrough that left you with less than the plain launch would be
 teaching a smaller app than the one it narrated, and an integration test asserts it.
 
 ## Firely does the FHIR work

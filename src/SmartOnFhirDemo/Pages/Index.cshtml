@@ -2,7 +2,7 @@
 @using Microsoft.Extensions.Options
 @inject IOptions<SmartOptions> Smart
 @{
-    ViewData["Title"] = "SMART on FHIR demo";
+    ViewData["Title"] = "Launch this app from an EHR";
     var learnUrl = Smart.Value.Url("/learn");
     var launchUrl = Smart.Value.Url("/launch");
 }

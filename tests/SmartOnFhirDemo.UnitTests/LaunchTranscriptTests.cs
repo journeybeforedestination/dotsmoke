@@ -119,19 +119,15 @@ public class LaunchTranscriptTests
     }
 
     [Fact]
-    public void The_patient_step_withholds_the_bearer_credential()
+    public void The_app_step_says_the_launch_is_over_and_annotates_nothing()
     {
-        var step = LaunchTranscript.ThePatientRead(Completed());
+        // The one step with no table: the app is below it, and by here the reader has
+        // been shown every exchange that made the app possible.
+        var step = LaunchTranscript.TheApp();
 
-        AssertAbsent(AccessToken, step);
-        Assert.Contains(
-            Smart.Withheld,
-            Assert.Single(step.Fields, f => f.Label == "Authorization").Value
-        );
-        Assert.Equal(
-            $"{Iss}/Patient/pat-1",
-            Assert.Single(step.Fields, f => f.Label == "GET").Value
-        );
+        Assert.Empty(step.Fields);
+        Assert.Null(step.Payload);
+        Assert.NotEmpty(step.Explanation);
     }
 
     // ---- Plumbing ---------------------------------------------------------
@@ -284,7 +280,7 @@ public class LaunchTranscriptTests
         Assert.Equal(5, LaunchTranscript.TheTokenResponse(Completed()).Number);
         Assert.Equal(6, LaunchTranscript.TheSessionItStarts(Facts).Number);
         Assert.Equal(7, LaunchTranscript.WhoLaunchedThis(Identified()).Number);
-        Assert.Equal(8, LaunchTranscript.ThePatientRead(Identified()).Number);
+        Assert.Equal(8, LaunchTranscript.TheApp().Number);
     }
 
     [Fact]
@@ -317,7 +313,7 @@ public class LaunchTranscriptTests
             .Append(LaunchTranscript.TheTokenResponse(Completed()).Number)
             .Append(LaunchTranscript.TheSessionItStarts(Facts).Number)
             .Append(LaunchTranscript.WhoLaunchedThis(Identified()).Number)
-            .Append(LaunchTranscript.ThePatientRead(Completed()).Number)
+            .Append(LaunchTranscript.TheApp().Number)
             .ToList();
 
         Assert.Equal(Enumerable.Range(1, LaunchTranscript.StepLabels.Count), numbers);
@@ -332,7 +328,6 @@ public class LaunchTranscriptTests
             .Concat([LaunchTranscript.TheTokenResponse(Completed())])
             .Concat([LaunchTranscript.TheSessionItStarts(Facts)])
             .Concat([LaunchTranscript.WhoLaunchedThis(Identified())])
-            .Concat([LaunchTranscript.ThePatientRead(Completed())])
             .SelectMany(s => s.Fields);
 
         Assert.All(notes, note => Assert.InRange(note.Note.Split(' ').Length, 1, 22));
