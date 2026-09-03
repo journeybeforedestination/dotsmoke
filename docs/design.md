@@ -33,6 +33,30 @@ The access token outlives the request that fetched it, filed against the browser
 session cookie and expiring when the EHR said it stops working. That is what a
 summary you can return to costs.
 
+## The app bounds its own traffic, not the EHR's
+
+`/launch` is a URL a stranger can open, and every launch drives requests at someone
+else's server — for the shipped configuration, a public sandbox with no SLA. One
+`DelegatingHandler` on every HTTP client holds this app to four requests in flight
+at a time; a fifth waits five seconds for a slot and is then refused as a server
+that could not be reached. The numbers and their reasons are in `EhrTraffic`.
+
+The bound is on the calls this app makes rather than on the requests it receives,
+and that is the whole design. An inbound per-IP limit on `/launch` bounds one
+launch; the panel reads that follow come from an established session and never
+touch `/launch` again. Bounding the calls themselves is the only place that
+catches both.
+
+Concurrency rather than a rate, because it self-regulates: an EHR that slows down
+makes in-flight calls pile up, and this app backs off without being told anything
+is wrong. A rate cap keeps sending at the same rate into a server that has started
+timing out.
+
+The limiter is one object for the process, handed to the handler. `IHttpClientFactory`
+pools handler chains and scopes each one separately, so a handler that built its own
+would cap four *per chain* — the mirror of the access log handler's rule, and the
+reason both are constructor arguments.
+
 ## A credential never reaches a page model
 
 `LaunchContext` names the token, and only the cache and the code that makes FHIR

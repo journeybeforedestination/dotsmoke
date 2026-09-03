@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SmartOnFhirDemo.IntegrationTests;
 
@@ -8,6 +9,34 @@ namespace SmartOnFhirDemo.IntegrationTests;
 /// </summary>
 public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
 {
+    [Fact]
+    public void Every_call_to_an_ehr_goes_through_the_traffic_limiter()
+    {
+        // The handler is added to ConfigureHttpClientDefaults, but the FHIR client does
+        // not take its pipeline from IHttpClientFactory — FhirClients asks
+        // IHttpMessageHandlerFactory for the named registration's inner chain and wraps
+        // the access log around it. That the defaults reach *that* chain is the fact this
+        // asserts, because if they did not the cap would silently not apply to the reads
+        // that make up almost all of this app's traffic.
+        var factory = app.Services.GetRequiredService<IHttpMessageHandlerFactory>();
+
+        foreach (var name in new[] { "", FhirClients.Name })
+            Assert.Contains(
+                Chain(factory.CreateHandler(name)),
+                handler => handler is EhrTrafficHandler
+            );
+    }
+
+    /// <summary>Every handler from the outside of a pipeline inwards.</summary>
+    private static IEnumerable<HttpMessageHandler> Chain(HttpMessageHandler handler)
+    {
+        for (var current = handler; current is not null; )
+        {
+            yield return current;
+            current = (current as DelegatingHandler)?.InnerHandler;
+        }
+    }
+
     [Fact]
     public async Task A_launch_url_opened_directly_explains_itself()
     {

@@ -94,11 +94,19 @@ gate), which is done — these are what was deliberately left out of it.
   other half of the GitHub-native pair is `actions/attest-sbom`, which needs an SBOM
   to attest — one more tool, and the reason this half went first.
 
-- **Rate limiting.** In-box (`AddRateLimiter`), no dependency. A public `/launch`
-  is a public button that drives traffic at someone else's public sandbox — the
-  2019-vintage `r4.smarthealthit.org`, which has no SLA and no rate-limit headers
-  to tell us when we have become a problem. Worth doing when the instance is
-  public, not before.
+- **Inbound rate limiting.** What is left of "rate limiting" now that outbound
+  calls are bounded (`EhrTraffic`). In-box (`AddRateLimiter`) on `/launch` and
+  `/learn`, per IP. Not done, for two reasons. It does not stop a packet arriving —
+  by the time the limiter sees a request the connection is already established, so
+  it protects the app's own work rather than its network. And it bounds almost
+  nothing that matters: one launch establishes a session, after which
+  `/summary?show=…` reads a panel from the EHR on every hit and never touches
+  `/launch` again, so an inbound limit on those two URLs would leave the traffic it
+  was meant to bound completely unbounded. That is the reason the limit went on the
+  outbound calls instead. Nothing in front of the app can do it either:
+  kamal-proxy cannot rate limit at any layer, and a DigitalOcean Cloud Firewall is
+  L3/L4 only. Cloudflare could, and costs a third party terminating TLS on an app
+  that renders patient summaries.
 
 - **A coverage floor that ratchets.** The nightly floor is a number in a comment
   in `ci.yml`, raised by hand. It could instead be read from the last green run and

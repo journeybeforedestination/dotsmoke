@@ -66,6 +66,12 @@ public class AppFixture : IAsyncDisposable
     }
 
     /// <summary>
+    /// The running app's container, for the few facts that are about how it is wired
+    /// rather than about what it answers.
+    /// </summary>
+    public IServiceProvider Services => _app.Services;
+
+    /// <summary>
     /// An HTTP client that follows a launch across both the in-memory app and any real
     /// server it redirects to, so a test can express a whole chain as a single GET.
     /// </summary>

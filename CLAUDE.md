@@ -50,6 +50,13 @@ another launch, silently and with nothing in the log saying so.
 `AccessLogHandler` takes its launch as a constructor argument for exactly this
 reason, and is built at the call site rather than registered.
 
+The mirror of that trap: the `ConcurrencyLimiter` behind `EhrTrafficHandler` must be
+a **singleton**, and getting it wrong looks exactly like working. A handler that built
+its own limiter, or resolved a scoped one, would get one per pooled handler chain — so
+the cap would be four *per chain*, which is no cap at all. Nothing throws, nothing logs;
+the app just quietly sends as much as it likes. The launch must not be shared; the
+limiter must be.
+
 This app has no forwarded-headers middleware, and adding one would be a regression.
 Behind a TLS-terminating proxy every conventional fix is wrong in its own way:
 kamal-proxy suppresses `X-Forwarded-*` by default when it terminates TLS; since

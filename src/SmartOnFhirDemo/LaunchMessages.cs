@@ -100,6 +100,11 @@ public static class LaunchMessages
                 $"The EHR would not return {panel.Title.ToLowerInvariant()} ({status}). "
                     + "Asking for a scope does not oblige an EHR to grant it.",
 
+            // No status because nothing was sent. AccessLogEntry already draws this
+            // distinction for the same reason; a rendered 0 would read as nonsense.
+            ChartOutcome.Unavailable(var panel, null, var reason) =>
+                $"The EHR could not be reached for {panel.Title.ToLowerInvariant()}: {reason}",
+
             ChartOutcome.Unavailable(var panel, var status, var reason) =>
                 $"The EHR returned {status} for {panel.Title.ToLowerInvariant()}: {reason}",
 
