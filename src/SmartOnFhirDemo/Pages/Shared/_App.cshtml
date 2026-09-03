@@ -1,0 +1,70 @@
+@*
+    The app, as an app: who the patient is, then the panels this launch is allowed to
+    read and whichever one is open. Links rather than any JavaScript — the app has no
+    script at all, and a page that reloads to show one more thing needs none.
+*@
+@model AppView
+
+<article class="app">
+    <header class="banner">
+        <h2>@Model.Summary.Banner</h2>
+        @if (Model.Summary.Meta.Any())
+        {
+            <p class="meta">@string.Join(" · ", Model.Summary.Meta)</p>
+        }
+    </header>
+
+    <div class="demographics">
+        <dl class="facts">
+            @foreach (var (label, value) in Model.Summary.Details)
+            {
+                <dt>@label</dt>
+                <dd>@value</dd>
+            }
+        </dl>
+    </div>
+
+    <nav class="tabs" aria-label="This patient's chart">
+        @foreach (var panel in ChartPanel.All)
+        {
+            var open = Model.Chart.Shown?.Panel.Slug == panel.Slug;
+
+            <a href="@Model.Chart.Link(panel)" aria-current="@(open ? "page" : null)">@panel.Title</a>
+        }
+    </nav>
+
+    <div class="pane">
+        @if (Model.Chart.Shown is { } shown)
+        {
+            @* No heading: the pressed tab directly above is the panel's name, and printing
+               it twice is how a page looks when it was assembled rather than designed. The
+               label is on the section for anyone not reading it by eye. *@
+            <section aria-label="@shown.Panel.Title">
+                @if (shown is ChartOutcome.Read read)
+                {
+                    <ul class="entries">
+                        @foreach (var entry in read.Entries)
+                        {
+                            <li>@entry</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    @* A sentence, never an empty list: "none recorded" and "the EHR would
+                       not say" look identical as nothing, and mean opposite things. *@
+                    <p class="note">@LaunchMessages.For(shown)</p>
+                }
+            </section>
+        }
+        else
+        {
+            <p class="note">Pick a panel to read on from this patient's chart.</p>
+        }
+    </div>
+
+    <details>
+        <summary>Raw Patient resource</summary>
+        <pre>@Model.RawJson</pre>
+    </details>
+</article>

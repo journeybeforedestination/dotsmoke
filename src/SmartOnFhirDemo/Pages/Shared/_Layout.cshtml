@@ -4,27 +4,109 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@ViewData["Title"] · SMART on FHIR demo</title>
+    @*
+        One inline block, still: the app serves no static files and its content security
+        policy allows a stylesheet nowhere else. Colour is spelled as tokens rather than
+        as literals at each use, because the dark theme is the same design with six
+        values swapped, and anything that reaches for a literal is a value that will not
+        swap with it.
+    *@
     <style>
-        :root { color-scheme: light dark; }
+        :root {
+            color-scheme: light dark;
+
+            --paper: #f7f6f3;
+            --surface: #ffffff;
+            --sunken: #f2f1ed;
+            --ink: #16211f;
+            --muted: #5d6b6d;
+            --line: #e2e2dc;
+            --accent: #0f766e;
+            --accent-soft: #0f766e14;
+            --on-accent: #ffffff;
+            --lift: 0 1px 2px #16211f0d;
+
+            --radius: .625rem;
+            --measure: 44rem;
+        }
+
+        @@media (prefers-color-scheme: dark) {
+            :root {
+                --paper: #0e1416;
+                --surface: #151d1f;
+                --sunken: #101819;
+                --ink: #e6edec;
+                --muted: #93a5a5;
+                --line: #263234;
+                --accent: #5eead4;
+                --accent-soft: #5eead41f;
+                --on-accent: #04211d;
+                --lift: none;
+            }
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            font: 16px/1.5 system-ui, sans-serif;
-            max-width: 42rem;
-            margin: 3rem auto;
+            margin: 0;
+            font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: var(--paper);
+            color: var(--ink);
+            -webkit-text-size-adjust: 100%;
+        }
+
+        .wrap {
+            max-width: var(--measure);
+            margin: 0 auto;
             padding: 0 1.5rem;
         }
-        h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
-        dl { display: grid; grid-template-columns: max-content 1fr; gap: .5rem 1.5rem; }
-        dt { font-weight: 600; opacity: .7; }
+
+        a { color: var(--accent); text-underline-offset: .15em; }
+
+        /* One rule for everything focusable, because the default ring is drawn against the
+           browser's idea of the background rather than this page's. */
+        :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+        /* The bar is what tells a reader, on a page they arrived at from an EHR, whose app
+           they are looking at — every other page here begins mid-story. */
+        .masthead { border-bottom: 1px solid var(--line); background: var(--surface); }
+        .masthead .wrap { display: flex; align-items: center; gap: .5rem; height: 3.25rem; }
+        .brand { display: flex; color: inherit; text-decoration: none; align-items: center; gap: .5rem; font-weight: 600; letter-spacing: -.01em; }
+        .brand svg { display: block; color: var(--accent); }
+        .masthead .where { margin-left: auto; font-size: .75rem; color: var(--muted); }
+
+        main { padding-bottom: 1rem; }
+        h1 {
+            font-size: 1.75rem;
+            line-height: 1.2;
+            letter-spacing: -.02em;
+            margin: 2.5rem 0 1.5rem;
+        }
+
+        dl { display: grid; grid-template-columns: max-content 1fr; gap: .75rem 1.5rem; margin: 0; }
+        dt { font-weight: 600; color: var(--muted); }
         dd { margin: 0; }
-        code, pre { font-family: ui-monospace, monospace; font-size: .875rem; }
+
+        code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875rem; }
+        code { background: var(--accent-soft); padding: .1em .35em; border-radius: .25rem; }
         pre {
             overflow-x: auto;
+            margin: 0;
             padding: 1rem;
-            border-radius: .375rem;
-            background: color-mix(in srgb, currentColor 8%, transparent);
+            border: 1px solid var(--line);
+            border-radius: .5rem;
+            background: var(--sunken);
         }
-        details { margin-top: 2rem; }
-        summary { cursor: pointer; opacity: .7; }
+        pre code { background: none; padding: 0; }
+
+        details { margin-top: 1.5rem; }
+        summary { cursor: pointer; color: var(--muted); font-size: .875rem; }
+        summary:hover { color: var(--accent); }
+        details[open] summary { margin-bottom: .75rem; }
+
+        ol, ul { padding-left: 1.25rem; }
+        li { margin: .375rem 0; }
+        li::marker { color: var(--muted); }
 
         /* The stops, and which one you are on. A row rather than a sentence, because
            "how much is left" is a question you answer by looking. The columns are
@@ -34,100 +116,245 @@
             grid-auto-flow: column;
             grid-auto-columns: 1fr;
             list-style: none;
-            margin: 0 0 3rem;
+            margin: 0 0 2.5rem;
             padding: 0;
             font-size: .6875rem;
             text-align: center;
         }
-        .progress li { position: relative; opacity: .45; }
-        .progress .done, .progress .current { opacity: 1; }
+        .progress li { position: relative; margin: 0; color: var(--muted); }
 
-        /* The rail, drawn as each chip's leading half so it never overshoots the row. */
+        /* The rail, drawn as each chip's leading half so it never overshoots the row. It
+           takes the accent only where the walk has already been, which is what makes the
+           row readable at a glance rather than only after counting the filled dots. */
         .progress li::before {
             content: "";
             position: absolute;
-            top: .25rem;
+            top: .3125rem;
             right: 50%;
             width: 100%;
-            border-top: 1px solid currentColor;
-            opacity: .35;
+            border-top: 2px solid var(--line);
         }
         .progress li:first-child::before { content: none; }
+        .progress .done::before, .progress .current::before { border-color: var(--accent); }
 
         .progress .dot {
             position: relative;   /* over the rail, not under it */
             display: block;
-            width: .5rem;
-            height: .5rem;
+            width: .625rem;
+            height: .625rem;
             margin: 0 auto .5rem;
-            border: 1px solid currentColor;
+            border: 2px solid var(--line);
             border-radius: 50%;
-            background: Canvas;   /* hides the rail behind an unfilled dot */
+            background: var(--paper);   /* hides the rail behind an unfilled dot */
         }
-        .progress .done .dot { background: currentColor; }
+        .progress .done .dot { border-color: var(--accent); background: var(--accent); }
         .progress .current .dot {
-            background: currentColor;
-            box-shadow: 0 0 0 .1875rem color-mix(in srgb, currentColor 25%, transparent);
+            border-color: var(--accent);
+            background: var(--accent);
+            box-shadow: 0 0 0 .25rem var(--accent-soft);
         }
 
-        .progress .n { display: block; font-variant-numeric: tabular-nums; opacity: .6; }
-        .progress .label { display: block; overflow-wrap: anywhere; }
+        .progress .n { display: block; font-variant-numeric: tabular-nums; }
+        .progress .label { display: block; overflow-wrap: break-word; hyphens: auto; }
+        .progress .current { color: var(--ink); }
         .progress .current .label { font-weight: 600; }
 
         /* The narrated launch: a run of steps, each a heading, a paragraph, and a
-           label/value table where every value gets a sentence explaining itself. */
-        .lead { margin-bottom: 2.5rem; }
-        .step { margin: 2.5rem 0; }
-
-        /* A rule between consecutive steps, never above the first. Spacing alone left
-           a run of them reading as one column of text, and where one stop ends is the
-           thing someone following along is looking for. The next step's margin is
-           dropped so the rule sits centred in the gap rather than below it. */
-        .step + .step {
-            margin-top: 0;
-            padding-top: 2.5rem;
-            border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+           label/value table where every value gets a sentence explaining itself. A card
+           each, so where one stop ends is something the eye finds rather than counts —
+           which spacing alone did not give, a run of them reading as one column of text. */
+        .lead { margin: 0 0 2rem; font-size: 1.0625rem; color: var(--muted); }
+        .step {
+            margin: 1.25rem 0;
+            padding: 1.5rem;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: var(--lift);
         }
-        .step h2 { font-size: 1.0625rem; margin: 0 0 .5rem; }
+        .step h2 { font-size: 1.0625rem; letter-spacing: -.01em; margin: 0 0 .5rem; }
         .step > p { margin: 0 0 1.25rem; }
+        .step > :last-child { margin-bottom: 0; }
         .step dl { gap: 1rem 1.5rem; align-items: baseline; }
         .step dt {
-            font-family: ui-monospace, monospace;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: .8125rem;
             font-weight: 400;
         }
         .step dd code { overflow-wrap: anywhere; }
         .step pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-        .note { margin: .375rem 0 0; font-size: .875rem; opacity: .7; }
+        .note { margin: .375rem 0 0; font-size: .875rem; color: var(--muted); }
 
-        .next { margin-top: 2.5rem; }
+        /* One column where two do not fit. The values here are URLs, scopes and hashes:
+           given a phone's half-width gutter they wrap mid-token, which is the one thing
+           a reader copying them out cannot afford. */
+        @@media (max-width: 33.99rem) {
+            dl:not(.facts) { grid-template-columns: 1fr; gap: .25rem; }
+            dl:not(.facts) dd + dt { margin-top: 1rem; }
+        }
+
+        /* The patient, as this app renders them: rows rather than a card's grid, because
+           the labels are prose and a hairline between them is what keeps seven of them
+           from reading as one paragraph. */
+        dl.facts {
+            display: block;
+            gap: 0;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: var(--lift);
+            padding: 0 1.5rem;
+        }
+        .facts dt { padding-top: .875rem; font-family: inherit; font-size: .8125rem; font-weight: 600; }
+        .facts dd { padding-bottom: .875rem; border-bottom: 1px solid var(--line); }
+        .facts dd:last-child { border-bottom: none; }
+        @@media (min-width: 34rem) {
+            /* No column gap: the rule under a row is two borders meeting, and a gap
+               between them shows as a break in the line. */
+            dl.facts { display: grid; grid-template-columns: 11rem 1fr; column-gap: 0; }
+            /* Side by side now, so both halves of a row take the same padding: stacked,
+               the label's leading space and the value's trailing space made the rhythm;
+               in two columns they made the two texts sit on different baselines. */
+            .facts dt { padding-right: 1.5rem; padding-bottom: .875rem; border-bottom: 1px solid var(--line); }
+            .facts dd { padding-top: .875rem; }
+            .facts dt:last-of-type, .facts dd:last-child { border-bottom: none; }
+        }
+
+        /* On the walkthrough the same list is already inside a step's card, and a card
+           within a card reads as a mistake. The rows keep their rules; the box goes. */
+        .step dl.facts, .app dl.facts { padding: 0; border: none; border-radius: 0; background: none; box-shadow: none; }
+
+        /* The app itself, at the end of the walkthrough and at the end of a plain launch.
+           A banner, the panels the token allows, and whichever one is open: it is styled
+           as the product rather than as one more section of the page explaining it. */
+        .app {
+            margin: 1.5rem 0;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: var(--lift);
+            overflow: hidden;
+        }
+        .app .banner {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--line);
+            /* The one tinted surface in the app. A patient banner is the thing a reader
+               checks they are on the right chart against, and it earns the colour. */
+            background: var(--accent-soft);
+        }
+        .app .banner h2 { margin: 0; font-size: 1.375rem; letter-spacing: -.02em; }
+        .app .banner .meta { margin: .25rem 0 0; font-size: .875rem; color: var(--muted); }
+
+        /* The demographics belong with the name: they say which record this is, which
+           is a different question from what the tabs below go and read. */
+        .app .demographics { padding: 1.25rem 1.5rem; }
+
+        /* Pressable, and obviously so. Tabs drawn as text with an underline read as a
+           heading until someone happens to hover one, and the whole of what this app
+           offers past the summary is behind them. */
+        .app .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5rem;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            background: var(--sunken);
+        }
+        .app .tabs a {
+            padding: .5rem .875rem;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--surface);
+            font-size: .875rem;
+            font-weight: 600;
+            color: var(--ink);
+            text-decoration: none;
+        }
+        .app .tabs a:hover { border-color: var(--accent); color: var(--accent); }
+        .app .tabs a[aria-current] {
+            border-color: transparent;
+            background: var(--accent);
+            color: var(--on-accent);
+        }
+
+        .app .pane { padding: 1.5rem; }
+        .app .entries { margin: 0; padding: 0; list-style: none; }
+        .app .entries li { margin: 0; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+        .app .entries li:last-child { border-bottom: none; }
+        .app > details { margin: 0; padding: 0 1.5rem 1.25rem; }
+
+        .next { display: flex; flex-wrap: wrap; gap: .625rem; margin: 2rem 0 0; }
         .button, .next button {
             display: inline-block;
             font: inherit;
             font-weight: 600;
+            font-size: .9375rem;
             padding: .625rem 1.125rem;
-            border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-            border-radius: .375rem;
-            background: none;
+            border: 1px solid var(--line);
+            border-radius: .5rem;
+            background: var(--surface);
             color: inherit;
             text-decoration: none;
             cursor: pointer;
         }
-        .aside { margin-top: 1.5rem; font-size: .875rem; opacity: .65; }
+        .button:hover, .next button:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* The one thing to press on a page that is waiting for you to press it. */
+        .button.go, .next button[type="submit"] {
+            border-color: transparent;
+            background: var(--accent);
+            color: var(--on-accent);
+        }
+        .button.go:hover, .next button[type="submit"]:hover {
+            color: var(--on-accent);
+            filter: brightness(1.1);
+        }
+
+        /* Tangential prose — true, worth knowing, and not what the page is about. */
+        aside {
+            margin-top: 1.5rem;
+            padding-left: 1rem;
+            border-left: 2px solid var(--line);
+            font-size: .875rem;
+            color: var(--muted);
+        }
+
         footer {
             margin-top: 3rem;
-            padding-top: 1rem;
-            border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+            border-top: 1px solid var(--line);
+            background: var(--surface);
             font-size: .8125rem;
-            opacity: .6;
+            color: var(--muted);
         }
+        footer .wrap { padding-top: 1.25rem; padding-bottom: 1.25rem; }
     </style>
 </head>
 <body>
-    <main>
+    <header class="masthead">
+        <div class="wrap">
+            <a class="brand" href="/">
+                @* Two arcs and a spark: a handshake, drawn. Inline because the policy that
+                   allows this stylesheet allows no image from anywhere. *@
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M7 5a8 8 0 0 0 0 14" />
+                    <path d="M17 5a8 8 0 0 1 0 14" />
+                    <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+                </svg>
+                dotsmoke
+            </a>
+            <span class="where">SMART on FHIR demo</span>
+        </div>
+    </header>
+
+    <main class="wrap">
         <h1>@ViewData["Title"]</h1>
         @RenderBody()
     </main>
-    <footer>SMART on FHIR demo · Firely SDK · FHIR @ModelInfo.Version</footer>
+
+    <footer>
+        <div class="wrap">Firely SDK · FHIR @ModelInfo.Version</div>
+    </footer>
 </body>
 </html>

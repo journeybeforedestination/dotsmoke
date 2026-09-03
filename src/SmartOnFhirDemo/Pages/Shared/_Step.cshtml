@@ -4,19 +4,24 @@
     <h2>@Model.Number · @Model.Title</h2>
     <p>@Model.Explanation</p>
 
-    <dl>
-        @foreach (var field in Model.Fields)
-        {
-            <dt>@field.Label</dt>
-            <dd>
-                <code>@field.Value</code>
-                @if (field.Note.Length > 0)
-                {
-                    <p class="note">@field.Note</p>
-                }
-            </dd>
-        }
-    </dl>
+    @* A step with nothing to annotate is a heading and a paragraph: the last one exists
+       to hand over to the app, not to explain it. *@
+    @if (Model.Fields.Count > 0)
+    {
+        <dl>
+            @foreach (var field in Model.Fields)
+            {
+                <dt>@field.Label</dt>
+                <dd>
+                    <code>@field.Value</code>
+                    @if (field.Note.Length > 0)
+                    {
+                        <p class="note">@field.Note</p>
+                    }
+                </dd>
+            }
+        </dl>
+    }
 
     @if (Model.Payload is not null)
     {

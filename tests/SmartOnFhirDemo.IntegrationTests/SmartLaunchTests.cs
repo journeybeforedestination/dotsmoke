@@ -18,18 +18,11 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         + Launcher.UrlVariable
         + " (see docs/development.md).";
 
-    private static readonly string[] SummaryLabels =
-    [
-        "Name",
-        "Gender",
-        "Birth date",
-        "MRN",
-        "Address",
-        "Phone",
-        "Marital status",
-    ];
-
-    private const string Absent = "—";
+    /// <summary>
+    /// The rows beneath the banner. The name and what identifies the patient are in the
+    /// banner itself, which is what <see cref="Banner"/> reads.
+    /// </summary>
+    private static readonly string[] DetailLabels = ["Address", "Phone", "Marital status"];
 
     /// <summary>Runs a whole launch — discovery, authorize, token, patient read — as one GET.</summary>
     private async Task<string> LaunchAsync(string authError = "")
@@ -74,7 +67,8 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         var html = await LaunchAsync();
 
         Assert.Contains("Patient summary", html);
-        foreach (var label in SummaryLabels)
+        Assert.NotEmpty(Banner(html));
+        foreach (var label in DetailLabels)
             Assert.Contains($"<dt>{label}</dt>", html);
     }
 
@@ -85,8 +79,8 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
 
         // Which patient the sandbox serves is not the point; that the app actually
         // read one and projected it is.
-        Assert.NotEqual(Absent, FieldValue(html, "Name"));
-        Assert.NotEqual(Absent, FieldValue(html, "Gender"));
+        Assert.NotEqual("Unnamed patient", Banner(html));
+        Assert.NotEmpty(Meta(html));
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
@@ -161,8 +155,8 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
             TestContext.Current.CancellationToken
         );
 
-        Assert.Equal(FieldValue(firstHtml, "Name"), FieldValue(againHtml, "Name"));
-        Assert.Equal(FieldValue(firstHtml, "MRN"), FieldValue(againHtml, "MRN"));
+        Assert.Equal(Banner(firstHtml), Banner(againHtml));
+        Assert.Equal(Meta(firstHtml), Meta(againHtml));
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
@@ -302,7 +296,10 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
 
         // The continue button leads where the plain launch would have sent a 302.
         var authorize = WebUtility.HtmlDecode(
-            Regex.Match(openingHtml, "class=\"button\" href=\"(?<url>[^\"]+)\"").Groups["url"].Value
+            Regex
+                .Match(openingHtml, "class=\"button go\" href=\"(?<url>[^\"]+)\"")
+                .Groups["url"]
+                .Value
         );
         Assert.NotEmpty(authorize);
 
@@ -454,7 +451,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.DoesNotContain("no longer open", html);
 
         // Still the walkthrough, not a second summary page: the narration is above it.
-        Assert.Contains("Reading the patient", html);
+        Assert.Contains("The launch is done", html);
     }
 
     // ---- Helpers ----------------------------------------------------------
@@ -468,15 +465,18 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         return WebUtility.HtmlDecode(match.Groups["value"].Value);
     }
 
-    private static string FieldValue(string html, string label)
-    {
-        var match = Regex.Match(
-            html,
-            $"<dt>{Regex.Escape(label)}</dt>\\s*<dd>(?<value>.*?)</dd>",
-            RegexOptions.Singleline
-        );
+    /// <summary>The name the app's banner shows, which is where the patient is named now.</summary>
+    private static string Banner(string html) => Group(html, "<h2>(?<value>.*?)</h2>", "banner");
 
-        Assert.True(match.Success, $"The summary had no '{label}' row.");
+    /// <summary>The line beneath it: gender, birth date and MRN, as the banner renders them.</summary>
+    private static string Meta(string html) =>
+        Group(html, "<p class=\"meta\">(?<value>.*?)</p>", "banner meta");
+
+    private static string Group(string html, string pattern, string what)
+    {
+        var match = Regex.Match(html, pattern, RegexOptions.Singleline);
+
+        Assert.True(match.Success, $"The app rendered no {what}.");
         return match.Groups["value"].Value.Trim();
     }
 }

@@ -11,7 +11,7 @@
     <partial name="_Step" model="step" />
 }
 
-<p class="next">
-    <a class="button" asp-page="/Learn/User"
+<nav class="next">
+    <a class="button go" asp-page="/Learn/User"
        asp-route-id="@Model.LaunchId" asp-route-patient="@Model.PatientId">Who launched it &rarr;</a>
-</p>
+</nav>

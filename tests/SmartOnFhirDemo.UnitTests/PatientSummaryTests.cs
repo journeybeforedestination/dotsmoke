@@ -228,38 +228,71 @@ public class PatientSummaryTests
         Assert.Equal("Never Married", summary.MaritalStatus);
     }
 
-    // ---- Fields projection ------------------------------------------------
+    // ---- What the app renders -----------------------------------------------
 
     [Fact]
-    public void Fields_renders_every_label_in_order()
+    public void Details_renders_every_label_in_order()
     {
         var summary = Summarize("""{"resourceType":"Patient","id":"no-data"}""");
 
-        Assert.Equal(
-            ["Name", "Gender", "Birth date", "MRN", "Address", "Phone", "Marital status"],
-            summary.Fields.Select(f => f.Label)
-        );
+        Assert.Equal(["Address", "Phone", "Marital status"], summary.Details.Select(f => f.Label));
     }
 
     [Fact]
-    public void Fields_renders_an_em_dash_for_every_absent_value()
+    public void Details_renders_an_em_dash_for_every_absent_value()
     {
         var summary = Summarize("""{"resourceType":"Patient","id":"no-data"}""");
 
-        Assert.All(summary.Fields, field => Assert.Equal("—", field.Value));
+        Assert.All(summary.Details, field => Assert.Equal("—", field.Value));
     }
 
     [Fact]
-    public void Fields_carries_the_values_through_when_they_are_present()
+    public void Details_carries_the_values_through_when_they_are_present()
     {
         var summary = Summarize(
             """
-            {"resourceType":"Patient","gender":"female","name":[{"given":["Joanna"],"family":"Preston"}]}
+            {"resourceType":"Patient","telecom":[{"system":"phone","value":"555-0101"}]}
             """
         );
 
-        Assert.Contains(("Name", "Joanna Preston"), summary.Fields);
-        Assert.Contains(("Gender", "Female"), summary.Fields);
-        Assert.Contains(("Phone", "—"), summary.Fields);
+        Assert.Contains(("Phone", "555-0101"), summary.Details);
+        Assert.Contains(("Address", "—"), summary.Details);
+    }
+
+    [Fact]
+    public void Meta_identifies_the_patient_beneath_their_name()
+    {
+        var summary = Summarize(
+            """
+            {"resourceType":"Patient","gender":"female","birthDate":"1974-12-25",
+             "identifier":[{"type":{"coding":[{"code":"MR"}]},"value":"12345"}]}
+            """
+        );
+
+        // The age moves with the clock, so the line is checked part by part.
+        Assert.Collection(
+            summary.Meta,
+            gender => Assert.Equal("Female", gender),
+            born => Assert.StartsWith("1974-12-25", born),
+            mrn => Assert.Equal("MRN 12345", mrn)
+        );
+    }
+
+    [Fact]
+    public void Meta_leaves_out_what_the_record_does_not_have()
+    {
+        // A dash in the banner line costs a reader a glance to learn nothing, which is
+        // the opposite of the trade the detail list makes.
+        var summary = Summarize("""{"resourceType":"Patient","gender":"male"}""");
+
+        Assert.Equal(["Male"], summary.Meta);
+    }
+
+    [Fact]
+    public void Banner_names_a_patient_the_record_does_not()
+    {
+        var summary = Summarize("""{"resourceType":"Patient","id":"no-data"}""");
+
+        Assert.Equal("Unnamed patient", summary.Banner);
     }
 }
