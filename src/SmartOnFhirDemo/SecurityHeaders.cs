@@ -9,9 +9,12 @@ namespace SmartOnFhirDemo;
 public static class SecurityHeaders
 {
     /// <summary>
-    /// The policy is this short because the app has no script and no inline styles:
-    /// <c>default-src 'none'</c> already covers <c>script-src</c>, and the only styling is
-    /// one <c>&lt;style&gt;</c> block in the layout, which is what <c>style-src</c> allows.
+    /// <c>default-src 'none'</c>, and then the three things this app actually does.
+    /// <c>style-src</c> is for the single <c>&lt;style&gt;</c> block in the layout;
+    /// <c>script-src 'self'</c> and <c>connect-src 'self'</c> are for
+    /// <c>wwwroot/app.js</c> and the pane it fetches. Both are <c>'self'</c> rather than a
+    /// hash because the script is a file rather than an inline block — nothing here is
+    /// loaded from anywhere but this origin, and no relaxation admits an inline script.
     /// <c>form-action 'self'</c> leaves the EHR's redirects alone — those are top-level
     /// GETs, not form posts — and confines the walkthrough's exchange form, the only form
     /// here, to this app.
@@ -23,8 +26,8 @@ public static class SecurityHeaders
     /// be framable.
     /// </summary>
     private const string Policy =
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
-        + "frame-ancestors 'none'";
+        "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; "
+        + "connect-src 'self'; form-action 'self'; frame-ancestors 'none'";
 
     /// <param name="secure">Whether the app's public origin is https.</param>
     public static KeyValuePair<string, string>[] For(bool secure) =>

@@ -19,11 +19,24 @@ public class SecurityHeadersTests
     {
         var policy = Value(secure: false, "Content-Security-Policy");
 
-        // The app has no script at all, so nothing needs relaxing for one; the single
-        // style block in the layout is what the one relaxation is for.
+        // Everything is denied and then three things are named back: the style block in
+        // the layout, the one script file, and the fetch that script makes for a pane.
         Assert.Contains("default-src 'none'", policy);
-        Assert.DoesNotContain("script-src", policy);
         Assert.Contains("style-src 'unsafe-inline'", policy);
+        Assert.Contains("script-src 'self'", policy);
+        Assert.Contains("connect-src 'self'", policy);
+    }
+
+    [Fact]
+    public void No_script_may_be_written_into_a_page_of_patient_data()
+    {
+        var policy = Value(secure: false, "Content-Security-Policy");
+
+        // The script is a file, so 'self' is the whole of what it needs. These two are
+        // what an injected <script> or an onclick= would need instead, and the difference
+        // between allowing this app's own script and allowing anybody's is exactly here.
+        Assert.DoesNotContain("script-src 'unsafe-inline'", policy);
+        Assert.DoesNotContain("unsafe-eval", policy);
     }
 
     [Fact]

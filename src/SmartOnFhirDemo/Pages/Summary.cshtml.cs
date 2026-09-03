@@ -34,41 +34,71 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
         CancellationToken ct
     )
     {
+        if (await ResolveAsync(id, patient, ct) is not { } view)
+            return Relaunch(patient);
+
+        WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(view.Rendered);
+
+        // By name, not by context: the credential stays below this page.
+        App = new AppView(
+            view.Rendered.Summary,
+            await PanelsAsync(view, show, ct),
+            view.Rendered.RawJson
+        );
+
+        return Page();
+    }
+
+    /// <summary>
+    /// The pane alone, for a tab that swapped rather than navigated. It resolves the
+    /// launch through the same guard the page does — a request that reached the chart
+    /// without passing it would be a way to read a patient this launch does not name.
+    ///
+    /// A refusal answers with a status rather than a redirect: the script's fallback is
+    /// to navigate for real, which lands on the page that explains what went wrong. Which
+    /// refusal it was does not reach the browser, and does not need to — both mean this
+    /// launch will not serve this pane.
+    /// </summary>
+    public async Task<IActionResult> OnGetPaneAsync(
+        string? id,
+        string? patient,
+        string? show,
+        CancellationToken ct
+    ) =>
+        await ResolveAsync(id, patient, ct) is { } view
+            ? Partial("_Pane", await PanelsAsync(view, show, ct))
+            : new StatusCodeResult(StatusCodes.Status409Conflict);
+
+    /// <summary>
+    /// The launch these three values name, or null once the refusal has been recorded.
+    /// Both handlers come through here, because the page and its pane check the same
+    /// thing and differ only in what they return when the check fails.
+    /// </summary>
+    private async Task<LaunchView?> ResolveAsync(string? id, string? patient, CancellationToken ct)
+    {
         var resolution = cache.Resolve(BrowserSession.Current(HttpContext), id, patient, clock);
 
         switch (resolution)
         {
             case LaunchResolution.Resolved(var view):
-                WhoLaunchedIt = LaunchMessages.WhoLaunchedIt(view.Rendered);
-
-                // By name, not by context: the credential stays below this page.
-                App = new AppView(
-                    view.Rendered.Summary,
-                    await chart.ViewAsync(
-                        "/summary",
-                        BrowserSession.Current(HttpContext),
-                        view.Facts,
-                        show,
-                        ct
-                    ),
-                    view.Rendered.RawJson
-                );
-
-                return Page();
+                return view;
 
             case LaunchResolution.PatientMismatch(var facts, var claimed):
                 // Unlike an expiry, this is worth knowing happened at all.
                 await log.RecordAsync(Refused(facts, claimed), ct);
-                return Relaunch(patient);
+                return null;
 
             case LaunchResolution.Unknown
             or LaunchResolution.Expired:
-                return Relaunch(patient);
+                return null;
 
             default:
                 throw new UnreachableException($"{resolution.GetType().Name} is not a resolution.");
         }
     }
+
+    private Task<ChartView> PanelsAsync(LaunchView view, string? show, CancellationToken ct) =>
+        chart.ViewAsync("/summary", BrowserSession.Current(HttpContext), view.Facts, show, ct);
 
     /// <summary>
     /// A read that was refused before anything was asked of the EHR. The patient recorded

@@ -30,16 +30,35 @@ public class PatientModel(IMemoryCache cache, Chart chart, TimeProvider clock)
         Step = LaunchTranscript.TheApp();
         App = new AppView(
             view.Rendered.Summary,
-            await chart.ViewAsync(
-                "/learn/patient",
-                BrowserSession.Current(HttpContext),
-                view.Facts,
-                show,
-                ct
-            ),
+            await PanelsAsync(view, show, ct),
             view.Rendered.RawJson
         );
 
         return Page();
     }
+
+    /// <summary>
+    /// The pane alone, for a tab that swapped rather than navigated. See
+    /// <see cref="SmartOnFhirDemo.Pages.SummaryModel.OnGetPaneAsync"/>: the walkthrough
+    /// ends on the same app, so its tabs behave the same way, through the same guard this
+    /// page's own handler uses.
+    /// </summary>
+    public async Task<IActionResult> OnGetPaneAsync(
+        string? id,
+        string? patient,
+        string? show,
+        CancellationToken ct
+    ) =>
+        Launch(id, patient) is { } view
+            ? Partial("_Pane", await PanelsAsync(view, show, ct))
+            : new StatusCodeResult(StatusCodes.Status409Conflict);
+
+    private Task<ChartView> PanelsAsync(LaunchView view, string? show, CancellationToken ct) =>
+        chart.ViewAsync(
+            "/learn/patient",
+            BrowserSession.Current(HttpContext),
+            view.Facts,
+            show,
+            ct
+        );
 }

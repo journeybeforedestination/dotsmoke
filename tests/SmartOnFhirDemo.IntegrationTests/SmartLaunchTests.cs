@@ -216,6 +216,38 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task A_swapped_panel_and_a_navigated_one_are_the_same_markup()
+    {
+        // The claim the tabs' script rests on. Both go through one partial, so the only
+        // way they could differ is if the pane handler resolved a different launch or
+        // read a different panel than the page it belongs to.
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+        var panel = $"{landed}&show={ChartPanel.Vitals.Slug}";
+
+        var page = await ReadAsync(client, panel);
+        var pane = await ReadAsync(client, $"{panel}&handler=pane");
+
+        // The pane is a fragment: no layout, no banner, no tabs — and the whole of what
+        // the page put inside its own pane.
+        Assert.DoesNotContain("<!DOCTYPE html>", pane);
+        Assert.Contains(pane.Trim(), page);
+    }
+
+    private static async Task<string> ReadAsync(HttpClient client, string url)
+    {
+        using var response = await client.GetAsync(
+            new Uri(url),
+            TestContext.Current.CancellationToken
+        );
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
     public async Task An_ehr_that_will_not_grant_the_scopes_refuses_the_whole_launch()
     {
         // Worth pinning because it is not what you would guess. Asked to grant less than
