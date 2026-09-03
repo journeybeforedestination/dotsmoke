@@ -8,20 +8,12 @@ using Microsoft.Extensions.Options;
 
 namespace SmartOnFhirDemo;
 
-/// <summary>
-/// How the launch step ended. The private constructor closes the hierarchy: only the
-/// cases below can exist, so a caller that handles them all has handled everything.
-/// </summary>
+/// <summary>How the launch step ended. The private constructor closes the hierarchy.</summary>
 public abstract record LaunchOutcome
 {
     private LaunchOutcome() { }
 
-    /// <summary>
-    /// Ready to hand the browser to the EHR. The session must outlive the redirect.
-    /// <paramref name="WellKnownUrl"/> and <paramref name="ConfigurationJson"/> record
-    /// where discovery looked and what it got; nothing in either is secret, and the
-    /// plain launch simply ignores them.
-    /// </summary>
+    /// <summary>Ready to hand the browser to the EHR. The session must outlive the redirect.</summary>
     public sealed record Prepared(
         string AuthorizeUrl,
         string State,
@@ -44,23 +36,12 @@ public abstract record CallbackOutcome
     private CallbackOutcome() { }
 
     /// <summary>
-    /// The launch finished. <paramref name="TokenJson"/> is the token response with the
-    /// credentials already removed, and <paramref name="Token"/> is everything it said
-    /// apart from them — the access token itself is not on this record at all, so no
-    /// caller can render or store it.
+    /// The launch finished. The access token is not on this record at all, and
+    /// <paramref name="TokenJson"/> is the token response with the credentials removed, so
+    /// no caller can render or store one. Identity and user are supplementary — the app's
+    /// job is the patient summary, and no way of missing either stops the launch; the
+    /// matching <c>Unavailable</c> field says why in prose.
     /// </summary>
-    /// <param name="Identity">
-    /// What the id_token claimed, once validated, or null when there was none to validate
-    /// or it did not survive validation. Identity is supplementary here: the app's job is
-    /// the patient summary, and none of the ways it can be missing stop the launch.
-    /// </param>
-    /// <param name="IdentityUnavailable">Why <paramref name="Identity"/> is null, as a sentence.</param>
-    /// <param name="User">
-    /// The resource <c>fhirUser</c> named, read back from the EHR. Null whenever the claim
-    /// was absent, could not be followed, or the server would not return it — the claim in
-    /// <paramref name="Identity"/> can be perfectly good while this is not.
-    /// </param>
-    /// <param name="UserUnavailable">Why <paramref name="User"/> is null, as a sentence.</param>
     public sealed record Completed(
         PatientSummary Summary,
         string RawJson,
@@ -103,27 +84,23 @@ public abstract record CallbackOutcome
 
 /// <summary>
 /// How the callback step ended, and — only when it ended in a launch — the live context
-/// that launch established.
-///
-/// The context is a second return rather than a field on
-/// <see cref="CallbackOutcome.Completed"/> so that the outcome stays credential-free. The
-/// narrated launch caches and renders that outcome; a token on it would be a token in the
-/// cache under a transcript, and on a page.
+/// that launch established. The context is a second return rather than a field on
+/// <see cref="CallbackOutcome.Completed"/> so the outcome stays credential-free: the
+/// narrated launch caches and renders that outcome, and a token on it would be a token in
+/// the cache under a transcript, and on a page.
 /// </summary>
 public sealed record CallbackResult(CallbackOutcome Outcome, LaunchContext? Context = null)
 {
-    /// <summary>Every way a callback ends short of a launch, which is most of them.</summary>
     public static implicit operator CallbackResult(CallbackOutcome outcome) => new(outcome);
 
-    /// <summary>The named alternative to the conversion above.</summary>
+    /// <summary>The named alternative the conversion above is required to have.</summary>
     public static CallbackResult From(CallbackOutcome outcome) => new(outcome);
 }
 
 /// <summary>
-/// The SMART EHR launch itself: discovery and the authorization request on the way
-/// out, the token exchange and patient read on the way back. It knows nothing about
-/// ASP.NET — callers decide how to present each outcome, and where to keep the launch
-/// in flight between the two steps.
+/// The SMART EHR launch itself: discovery and the authorization request on the way out,
+/// the token exchange and patient read on the way back. It knows nothing about ASP.NET —
+/// callers decide how to present each outcome and where to keep the launch in flight.
 /// </summary>
 public sealed partial class SmartLaunch(
     IHttpClientFactory clients,
@@ -180,8 +157,7 @@ public sealed partial class SmartLaunch(
 
         var wellKnown = $"{iss.TrimEnd('/')}/.well-known/smart-configuration";
 
-        // Read the document as text and then parse it, rather than straight into the
-        // two fields this app uses: the learn pages show what the EHR actually published.
+        // Read as text and then parse: the learn pages show what the EHR actually published.
         string configJson;
         SmartConfiguration? config;
         try
@@ -239,15 +215,11 @@ public sealed partial class SmartLaunch(
     /// Why the endpoints this configuration published may not be used, or null if they may.
     ///
     /// The allowlist trusts an <em>origin</em>, and the path beneath it is the EHR's to
-    /// choose — which is exactly what lets the SMART App Launcher encode a whole simulation
-    /// into one. So whoever controls a path on a trusted host controls this document, and
-    /// these two fields are what it steers: <c>authorization_endpoint</c> is where this app
-    /// sends the browser, so one pointing elsewhere is an open redirect wearing this app's
-    /// domain, and <c>token_endpoint</c> is where it posts the authorization code, so one
-    /// pointing elsewhere is the code handed to a stranger.
-    ///
-    /// SMART requires neither to sit on the FHIR base's origin. This app requires it anyway,
-    /// because an origin is the whole of what it checked.
+    /// choose, so whoever controls a path on a trusted host controls this document. An
+    /// <c>authorization_endpoint</c> pointing elsewhere is an open redirect wearing this
+    /// app's domain; a <c>token_endpoint</c> pointing elsewhere is the authorization code
+    /// handed to a stranger. SMART requires neither to sit on the FHIR base's origin; this
+    /// app does, because an origin is the whole of what it checked.
     /// </summary>
     private static string? Elsewhere(string iss, SmartConfiguration config) =>
         Published(iss, "authorization_endpoint", config.AuthorizationEndpoint)
@@ -333,7 +305,7 @@ public sealed partial class SmartLaunch(
     /// <summary>
     /// What the token endpoint answered, or the reason it did not. Wrapped because the
     /// clients carry a timeout: an EHR that goes quiet has to land on the same page as one
-    /// that answers badly, rather than as an exception out of the callback.
+    /// that answers badly.
     /// </summary>
     private async Task<(int Status, string Body, string? Unreachable)> ExchangeAsync(
         string tokenEndpoint,
@@ -379,10 +351,9 @@ public sealed partial class SmartLaunch(
                     + "nothing to validate the id_token against. Unvalidated claims are not shown."
             );
 
-        // The same rule the two discovered endpoints are refused for, with a different
-        // consequence: whoever answers at a jwks_uri decides which id_tokens this app
-        // believes. Identity degrades rather than failing, so this is a sentence and the
-        // launch goes on without a name.
+        // The same rule the discovered endpoints are refused for: whoever answers at a
+        // jwks_uri decides which id_tokens this app believes. Identity degrades rather than
+        // failing, so this is a sentence and the launch goes on without a name.
         if (!Smart.SameOrigin(launch.Iss, launch.JwksUri))
             return (
                 null,
@@ -525,11 +496,9 @@ public sealed partial class SmartLaunch(
         }
         catch (FhirOperationException ex)
         {
-            // Commonly a 403: asking for user/Practitioner.read does not oblige an EHR
-            // to grant it, and an app is expected to cope with getting less than it asked.
-            // Not against the SMART App Launcher, though — it does not enforce user/ scopes
-            // at all, so this read succeeds there whether or not the scope was granted, and
-            // a launch against it proves less about scopes than it appears to.
+            // Commonly a 403: asking for user/Practitioner.read does not oblige an EHR to
+            // grant it. Not against the SMART App Launcher, though — it does not enforce
+            // user/ scopes at all, so a launch there proves less than it appears to.
             LogUserReadFailed(ex, fhirUser);
             return (null, $"The EHR would not return {fhirUser} ({(int)ex.Status}).");
         }
@@ -537,20 +506,16 @@ public sealed partial class SmartLaunch(
 
     /// <summary>
     /// Where to read the launching user from, or the reason the reference will not be
-    /// followed.
+    /// followed. SMART says fhirUser SHOULD be absolute; the SMART App Launcher returns a
+    /// relative one, so both are handled, and an absolute reference to another origin is
+    /// refused rather than sending this launch's access token to a server it was not issued
+    /// for.
     ///
-    /// SMART says fhirUser SHOULD be an absolute URL; the SMART App Launcher returns a
-    /// relative one, so both are handled. An absolute reference to a different origin is
-    /// refused rather than followed, because following it would send this server's access
-    /// token to a server the token was never issued for.
-    ///
-    /// Which makes "is this absolute?" the load-bearing question, and
-    /// <c>Uri.IsWellFormedUriString</c> the wrong way to ask it: it answers false for
-    /// <c>//elsewhere.example/Practitioner/1</c> and for any absolute URL carrying a
-    /// character it would have to escape, and both of those resolve against the FHIR base to
-    /// a host that is not it. Every reference that is not absolute therefore has to look
-    /// like a reference — <c>ResourceType/id</c>, the only shape a relative one may take —
-    /// rather than merely fail to look absolute.
+    /// That makes "is this absolute?" load-bearing, and <c>Uri.IsWellFormedUriString</c> the
+    /// wrong way to ask it: it answers false for <c>//elsewhere.example/Practitioner/1</c>
+    /// and for any absolute URL carrying a character it would escape, both of which resolve
+    /// against the FHIR base to another host. So anything not absolute has to look like a
+    /// reference — <c>ResourceType/id</c> — rather than merely fail to look absolute.
     /// </summary>
     private static (string? Location, string? Refused) Location(string iss, string fhirUser) =>
         Uri.TryCreate(fhirUser, UriKind.Absolute, out _) ? Absolute(iss, fhirUser)

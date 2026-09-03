@@ -6,10 +6,9 @@ namespace SmartOnFhirDemo;
 
 /// <summary>
 /// What to tell the user when a launch does not reach a page. The plain launch and the
-/// narrated one fail identically — they differ only in what they do when they succeed —
-/// so the mapping lives here rather than in each of them. It also keeps the exhaustiveness
-/// check in one place: a new outcome breaks this switch, instead of quietly reaching a
-/// caller that has not been taught about it.
+/// narrated one fail identically, so the mapping lives here rather than in each of them —
+/// which also keeps the exhaustiveness check in one place: a new outcome breaks this switch
+/// instead of quietly reaching a caller that has not been taught about it.
 /// </summary>
 public static class LaunchMessages
 {
@@ -31,9 +30,8 @@ public static class LaunchMessages
 
     /// <summary>
     /// What a summary says when its launch will not resolve. Expiry, an unknown launch and
-    /// a page whose patient does not match its launch all land here: they are different
-    /// events, but there is nothing a reader can do differently about any of them. The
-    /// distinction is kept where it can be acted on, in the access log's outcome.
+    /// a patient mismatch all land here: there is nothing a reader can do differently about
+    /// any of them, and the distinction is kept where it can be acted on — the access log.
     /// </summary>
     public static string Relaunch(string? patientId) =>
         string.IsNullOrEmpty(patientId)

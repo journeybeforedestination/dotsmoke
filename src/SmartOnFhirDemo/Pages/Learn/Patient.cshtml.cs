@@ -14,7 +14,6 @@ public class PatientModel(IMemoryCache cache, Chart chart, TimeProvider clock)
 {
     public LaunchStep Step { get; private set; } = default!;
 
-    /// <summary>The app this walkthrough ends on, which is the app /summary is.</summary>
     public AppView App { get; private set; } = default!;
 
     public async Task<IActionResult> OnGetAsync(

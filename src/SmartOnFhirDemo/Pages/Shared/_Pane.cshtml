@@ -1,19 +1,14 @@
 @*
-    Whichever panel is open, and nothing around it. Split out of _App so a tab can ask for
-    just this much: the handler that answers `?handler=pane` renders this partial, and the
-    script swaps it into the `.pane` div that stays behind in _App.
-
-    So this is the div's contents rather than the div itself — the wrapper is what the
-    script holds on to, and a partial that re-rendered it would replace the element the
-    swap was aimed at.
+    Whichever panel is open, split out of _App so `?handler=pane` can render just this much.
+    The div's contents rather than the div itself: the wrapper is what the script holds on
+    to, and a partial that re-rendered it would replace the element the swap was aimed at.
 *@
 @model ChartView
 
 @if (Model.Shown is { } shown)
 {
-    @* No heading: the pressed tab directly above is the panel's name, and printing
-       it twice is how a page looks when it was assembled rather than designed. The
-       label is on the section for anyone not reading it by eye. *@
+    @* No heading: the pressed tab directly above is the panel's name. The label is on the
+       section for anyone not reading it by eye. *@
     <section aria-label="@shown.Panel.Title">
         @if (shown is ChartOutcome.Read read)
         {

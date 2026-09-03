@@ -22,11 +22,9 @@ public static class LaunchCache
 
     /// <summary>
     /// How many launches this app will hold at once, in flight and established together.
-    /// Far more than it will ever have and few enough to be a bound: a launch in flight
-    /// costs a URL and a verifier, and anyone able to open a URL can start one.
-    ///
-    /// The unit is entries, which is why every <c>Set</c> below says <c>Size = 1</c> —
-    /// a cache with a limit refuses an entry that does not price itself.
+    /// Anyone able to open a URL can start one. The unit is entries, which is why every
+    /// <c>Set</c> below says <c>Size = 1</c> — a cache with a limit refuses an entry that
+    /// does not price itself.
     /// </summary>
     public const long Entries = 10_000;
 
@@ -58,12 +56,10 @@ public static class LaunchCache
 
     /// <summary>
     /// Files a finished launch against the browser that started it. The credential and the
-    /// account of the launch are stored as one entry so they cannot outlive each other, and
-    /// the entry expires when the EHR said the token stops working.
-    ///
-    /// As a lifetime rather than a moment, because the cache sweeps on the system clock
-    /// while everything else here reads the injected one. They are the same clock in a
-    /// deployment and different clocks under a test, and a duration means the same to both.
+    /// account of the launch are one entry so they cannot outlive each other, expiring when
+    /// the EHR said the token stops working. As a lifetime rather than a moment: the cache
+    /// sweeps on the system clock while everything else here reads the injected one, and a
+    /// duration means the same to both.
     /// </summary>
     public static void RememberLaunch(
         this IMemoryCache cache,
@@ -142,10 +138,10 @@ public static class LaunchCache
         )
             return (null, new LaunchResolution.Unknown());
 
-        // Against the injected clock rather than left to the cache's own housekeeping, so a
-        // launch is gone the moment its token is rather than whenever the entry is swept.
-        // Once it has been swept this is unreachable and an expired launch reads as an
-        // unknown one, which is honest: by then the app has nothing left to tell them apart.
+        // Against the injected clock rather than the cache's own housekeeping, so a launch
+        // is gone the moment its token is rather than whenever the entry is swept. Once
+        // swept, an expired launch reads as an unknown one, which is honest: by then the app
+        // has nothing left to tell them apart.
         if (launch.Context.ExpiresAt <= clock.GetUtcNow())
             return (null, new LaunchResolution.Expired());
 

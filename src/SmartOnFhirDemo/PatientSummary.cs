@@ -46,9 +46,8 @@ public sealed record PatientSummary(
         );
 
     /// <summary>
-    /// What the banner calls this patient. A record with no name is a real thing to
-    /// arrive at, and a banner that renders it as blank looks like a page that failed
-    /// rather than a record that is thin.
+    /// What the banner calls this patient. A record with no name is a real thing to arrive
+    /// at, and a blank banner looks like a page that failed rather than a thin record.
     /// </summary>
     public string Banner => Name ?? "Unnamed patient";
 

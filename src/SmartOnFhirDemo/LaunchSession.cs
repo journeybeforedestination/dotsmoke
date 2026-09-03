@@ -8,10 +8,8 @@ namespace SmartOnFhirDemo;
 /// </summary>
 /// <param name="LaunchId">
 /// Opaque, and freshly minted at the exchange rather than reused from the OAuth
-/// <c>state</c>: that value was sent to the EHR and sits in its logs, and it keys a launch
-/// in flight, which is a different lifetime from one that has finished.
+/// <c>state</c>: that value was sent to the EHR and sits in its logs.
 /// </param>
-/// <param name="IssuerOrigin">The EHR, collapsed the way the access log files it.</param>
 /// <param name="ExpiresAt">
 /// When the EHR said the token stops being good for anything. The launch expires with it:
 /// holding context past the credential it depends on only defers the failure.
@@ -107,21 +105,17 @@ public static class BrowserSession
             {
                 HttpOnly = true,
 
-                // Lax, and this is load-bearing rather than a default. The EHR sends the
-                // browser back to /callback from its own origin — a cross-site top-level
-                // GET, which Lax permits and Strict drops. A first launch would survive
-                // Strict, because it has no cookie to withhold and mints one here anyway.
-                // A second would not: it would arrive without the first's cookie, open a
-                // session of its own, and take the first launch out of reach — which is
-                // the isolation this whole design exists to keep.
+                // Load-bearing rather than a default. The EHR sends the browser back to
+                // /callback from its own origin — a cross-site top-level GET, which Lax
+                // permits and Strict drops. A first launch would survive Strict; a second
+                // would arrive without the first's cookie, open a session of its own, and
+                // take the first launch out of reach.
                 SameSite = SameSiteMode.Lax,
 
-                // Follows the app's configured origin, never this request's scheme. Behind
+                // Follows the app's configured origin, never this request's scheme: behind
                 // a proxy that terminates TLS the request arrives as plain http, and
                 // deriving the flag from it would mark the cookie that authenticates a
-                // patient summary as safe to send in clear — silently, on a public host.
-                // On the default http://localhost:5000 origin it is false, which is what keeps
-                // those instructions working.
+                // patient summary as safe to send in clear.
                 Secure = secure,
             }
         );

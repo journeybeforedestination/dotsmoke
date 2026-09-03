@@ -17,16 +17,13 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
     /// <summary>Who started this launch, or why the app cannot say.</summary>
     public string WhoLaunchedIt { get; private set; } = "";
 
-    /// <summary>The patient, the panels this page offers, and the resource behind them.</summary>
     public AppView App { get; private set; } = default!;
 
     /// <param name="patient">
-    /// The patient this page believes it is showing. Carried so the server can disagree:
-    /// rendering one patient under another's banner is the failure the session design
-    /// exists to prevent, and a page that never says what it thinks it is showing cannot
-    /// be caught doing it.
+    /// The patient this page believes it is showing. Carried so the server can disagree: a
+    /// page that never says what it thinks it is showing cannot be caught rendering one
+    /// patient under another's banner.
     /// </param>
-    /// <param name="show">Which panel of the chart to read, or none for the summary alone.</param>
     public async Task<IActionResult> OnGetAsync(
         string? id,
         string? patient,
@@ -50,14 +47,11 @@ public class SummaryModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
     }
 
     /// <summary>
-    /// The pane alone, for a tab that swapped rather than navigated. It resolves the
-    /// launch through the same guard the page does — a request that reached the chart
-    /// without passing it would be a way to read a patient this launch does not name.
-    ///
-    /// A refusal answers with a status rather than a redirect: the script's fallback is
-    /// to navigate for real, which lands on the page that explains what went wrong. Which
-    /// refusal it was does not reach the browser, and does not need to — both mean this
-    /// launch will not serve this pane.
+    /// The pane alone, for a tab that swapped rather than navigated. It resolves the launch
+    /// through the same guard the page does — a request that reached the chart without
+    /// passing it would be a way to read a patient this launch does not name. A refusal
+    /// answers with a status rather than a redirect: the script's fallback is to navigate for
+    /// real, which lands on the page that explains what went wrong.
     /// </summary>
     public async Task<IActionResult> OnGetPaneAsync(
         string? id,

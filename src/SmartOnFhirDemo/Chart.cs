@@ -49,8 +49,8 @@ public abstract record ChartOutcome
     private ChartOutcome() { }
 
     /// <summary>
-    /// Which panel this is about. Declared here so every case has to name one and the view
-    /// can just ask, rather than switching over the hierarchy a second time in markup.
+    /// Declared here so every case has to name one and the view can just ask, rather than
+    /// switching over the hierarchy a second time in markup.
     /// </summary>
     public abstract ChartPanel Panel { get; init; }
 
@@ -80,9 +80,7 @@ public abstract record ChartOutcome
 
 /// <summary>
 /// The panels a page offers, the links to them, and the one it is showing. Shared by the
-/// plain summary and the narrated one so the two cannot drift apart: they are the same
-/// launch read the same way, and a reader who took the long route should not arrive with
-/// less than one who did not.
+/// plain summary and the narrated one so the two cannot drift apart.
 /// </summary>
 /// <param name="Path">The page the links point back at, which is the only difference between them.</param>
 public sealed record ChartView(string Path, string LaunchId, string PatientId, ChartOutcome? Shown)
@@ -94,10 +92,9 @@ public sealed record ChartView(string Path, string LaunchId, string PatientId, C
 }
 
 /// <summary>
-/// The follow-up reads a summary can make once a launch is something you can come back
-/// to. It takes the launch by name rather than by context so the credential stays below
-/// the page: the caller says which browser, which launch and which patient, and what
-/// comes back is a panel or a sentence.
+/// The follow-up reads a summary can make. It takes the launch by name rather than by
+/// context so the credential stays below the page: the caller says which browser, which
+/// launch and which patient, and what comes back is a panel or a sentence.
 /// </summary>
 public sealed partial class Chart(
     IMemoryCache cache,
@@ -113,9 +110,8 @@ public sealed partial class Chart(
     private partial void LogPanelFailed(Exception ex, string panel);
 
     /// <summary>
-    /// Everything a page needs to show the panels: the links, and whatever <c>show</c>
-    /// asked for. One method rather than a rule each page remembers — that a name which is
-    /// not a panel shows nothing rather than failing is decided once, here.
+    /// Everything a page needs to show the panels. One method rather than a rule each page
+    /// remembers — that a name which is not a panel shows nothing is decided once, here.
     /// </summary>
     public async Task<ChartView> ViewAsync(
         string path,
@@ -163,9 +159,6 @@ public sealed partial class Chart(
         }
         catch (FhirOperationException ex)
         {
-            // Not against the SMART App Launcher, which does not enforce scopes the way a
-            // real EHR does — so a launch there proves the search works, and proves rather
-            // less about what happens when a scope is refused.
             LogPanelFailed(ex, panel.Slug);
 
             return (int)ex.Status is 401 or 403
@@ -177,11 +170,8 @@ public sealed partial class Chart(
                 );
         }
         // Firely does not wrap transport failures: BaseFhirClient hands the request to
-        // HttpClient without a try/catch, so these arrive here untouched and would
-        // otherwise escape the panel read and lose the whole summary to /error.
-        // TaskCanceledException for the same reason the launch names it — the clients
-        // carry a timeout, and an EHR that goes quiet is one panel's problem, not the
-        // page's.
+        // HttpClient without a try/catch, so these arrive untouched and would otherwise lose
+        // the whole summary to /error. An EHR that goes quiet is one panel's problem.
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             LogPanelFailed(ex, panel.Slug);
