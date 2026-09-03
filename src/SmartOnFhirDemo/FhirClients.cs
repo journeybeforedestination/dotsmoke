@@ -4,10 +4,9 @@ using Hl7.Fhir.Rest;
 namespace SmartOnFhirDemo;
 
 /// <summary>
-/// Builds the FHIR client a launch reads through. Two things have to be true of every one
-/// of them, and neither is a caller's to remember: it presents this launch's access token,
-/// and every request it makes is written to the access log against this launch. So there
-/// is one place they are built.
+/// Builds the FHIR client a launch reads through. Two things have to be true of every one,
+/// and neither is a caller's to remember: it presents this launch's access token, and every
+/// request it makes is written to the access log against this launch.
 /// </summary>
 public sealed class FhirClients(
     IHttpMessageHandlerFactory handlers,
@@ -17,8 +16,7 @@ public sealed class FhirClients(
 {
     /// <summary>
     /// The named client every FHIR read goes through. Named so its handler can be taken
-    /// from the factory's pool and wrapped per launch; timeouts, retries and a user-agent
-    /// belong on this registration too, and are their own change.
+    /// from the factory's pool and wrapped per launch.
     /// </summary>
     public const string Name = "fhir";
 

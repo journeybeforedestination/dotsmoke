@@ -20,14 +20,12 @@ public sealed record LaunchStep(
 );
 
 /// <summary>
-/// Turns the outcomes of a real launch into an explanation of it. Pure: it does no I/O
-/// and reaches nothing but what it is handed, and what it is handed has already had its
-/// credentials removed by <see cref="SmartLaunch"/>. The prose lives here rather than in
-/// the pages so that it can be read, reviewed and tested in one place.
+/// Turns the outcomes of a real launch into an explanation of it. Pure: what it is handed
+/// has already had its credentials removed by <see cref="SmartLaunch"/>. The prose lives
+/// here rather than in the pages so it can be read, reviewed and tested in one place.
 ///
-/// A note is one sentence. The reader is looking at a live launch, and a paragraph per
-/// field buries the value it is meant to be explaining — what a thing is and why it
-/// matters, then stop. Step 4's code is the one deliberate exception.
+/// A note is one sentence — a paragraph per field buries the value it is meant to be
+/// explaining. Step 4's code is the one deliberate exception.
 /// </summary>
 public static class LaunchTranscript
 {
@@ -430,9 +428,8 @@ public static class LaunchTranscript
             );
 
     /// <summary>
-    /// The last stop, and the only one that annotates nothing. The reader has been
-    /// through the whole handshake by now; what is left is to see what it bought, which
-    /// is the app — so this step is a sentence and the page below it is the product.
+    /// The last stop, and the only one that annotates nothing: what is left is to see what
+    /// the handshake bought, so this step is a sentence and the page below it is the product.
     /// </summary>
     public static LaunchStep TheApp() =>
         new(

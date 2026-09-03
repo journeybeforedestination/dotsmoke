@@ -1,11 +1,7 @@
 @*
-    The app, as an app: who the patient is, then the panels this launch is allowed to
-    read and whichever one is open.
-
-    Every tab is a real link to a real URL, and pressing one works with no script at all.
-    wwwroot/app.js only spares the reader the reload: it asks the same page for the pane
-    alone and swaps it in. Nothing here knows that happened, which is the point — the
-    markup a swap produces and the markup a navigation produces are one partial.
+    Every tab is a real link to a real URL, and pressing one works with no script at all;
+    wwwroot/app.js only spares the reader the reload. Nothing here knows that happened,
+    which is the point — a swap and a navigation produce markup from one partial.
 *@
 @model AppView
 

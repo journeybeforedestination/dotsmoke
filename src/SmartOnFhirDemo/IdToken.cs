@@ -29,17 +29,14 @@ public abstract record IdTokenOutcome
 }
 
 /// <summary>
-/// Proves an id_token came from the EHR that issued it, and says what it claims.
+/// Proves an id_token came from the EHR that issued it, and says what it claims. Pure: the
+/// caller supplies the keys, the issuer, the audience and the clock, which is what lets
+/// every rule below be tested without a network or a wait.
 ///
-/// Pure: it fetches nothing and caches nothing. The caller supplies the keys, the issuer
-/// to expect, the audience to expect and the clock, which is what lets every rule below
-/// be tested without a network or a wait.
-///
-/// Worth knowing that this is optional here. OIDC Core 3.1.3.7 lets an app skip signature
-/// validation when the token arrives over a direct TLS connection to the token endpoint,
-/// which is exactly how it arrives in an authorization code flow. This app validates
-/// anyway: the keys are one cached fetch away, and an app that only checks signatures
-/// when it must is one deployment change away from not checking them when it should.
+/// Optional, strictly: OIDC Core 3.1.3.7 lets an app skip signature validation when the
+/// token arrives over a direct TLS connection to the token endpoint, which is how it arrives
+/// here. This app validates anyway — an app that only checks signatures when it must is one
+/// deployment change away from not checking them when it should.
 /// </summary>
 public static class IdToken
 {

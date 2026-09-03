@@ -13,14 +13,11 @@ public sealed class SmartOptions
     public string ClientId { get; set; } = "smart-on-fhir-demo";
 
     /// <summary>
-    /// What the app asks the EHR for. <c>openid fhirUser</c> is what makes the EHR
-    /// return an id_token naming the user who started the launch; <c>user/Practitioner.read</c>
-    /// is what lets that name be read. The three <c>patient/</c> scopes after them are the
-    /// summary's follow-up panels. All of them are asked for narrowly rather than as
-    /// <c>user/*.read</c>, because this app only handles a provider EHR launch.
-    ///
-    /// v1 syntax. Moving to v2 (<c>patient/Condition.rs</c>) is a lesson about showing the
-    /// gap between what was requested and what was granted, and deserves its own change.
+    /// What the app asks the EHR for. <c>openid fhirUser</c> makes the EHR return an
+    /// id_token naming the user who started the launch, <c>user/Practitioner.read</c> lets
+    /// that name be read, and the <c>patient/</c> scopes are the summary's follow-up panels.
+    /// Asked for narrowly rather than as <c>user/*.read</c>: this app only handles a
+    /// provider EHR launch. v1 syntax; moving to v2 deserves its own change.
     /// </summary>
     public string Scopes { get; set; } =
         "launch openid fhirUser patient/Patient.read user/Practitioner.read "
@@ -34,11 +31,11 @@ public sealed class SmartOptions
     public string[] TrustedIssuers { get; set; } = ["https://launch.smarthealthit.org"];
 
     /// <summary>
-    /// This app's own address as the outside world reaches it — scheme, host and port,
-    /// no path. Required, and deliberately without a fallback: every absolute URL the
-    /// app hands out is built from this rather than read off the incoming request, so a
-    /// proxy that terminates TLS on the app's behalf cannot make it describe itself as
-    /// <c>http</c>. See the forwarded-headers trap in CLAUDE.md.
+    /// This app's own address as the outside world reaches it — scheme, host and port, no
+    /// path. Required and deliberately without a fallback: every absolute URL is built from
+    /// this rather than read off the incoming request, so a proxy that terminates TLS cannot
+    /// make the app describe itself as <c>http</c>. See the forwarded-headers trap in
+    /// CLAUDE.md.
     /// </summary>
     public string PublicOrigin { get; set; } = "";
 
@@ -165,20 +162,16 @@ public static class Smart
         && string.Equals(origin, candidate, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Scheme, host and port of an absolute http(s) URL, or null if it is neither. Public
-    /// because the access log keys on it for the same reason the trust check compares on
-    /// it: a SMART issuer legitimately carries a path, and the launcher puts the selected
-    /// patient inside that path.
+    /// Scheme, host and port of an absolute http(s) URL, or null if it is neither.
     /// </summary>
     public static string? Origin(string? url) =>
         Absolute(url) is { } uri ? $"{uri.Scheme}://{uri.Host}:{uri.Port}" : null;
 
     /// <summary>
-    /// Whether a URL is nothing but an origin: absolute, http(s), and carrying no path,
-    /// query or fragment. What <see cref="SmartOptions.PublicOrigin"/> must be, because
-    /// it is a prefix other URLs are appended to — <c>https://host/app</c> would silently
-    /// yield <c>https://host/app/callback</c>, which is a redirect URI the EHR was never
-    /// registered against.
+    /// Whether a URL is nothing but an origin: absolute, http(s), no path, query or
+    /// fragment. What <see cref="SmartOptions.PublicOrigin"/> must be, because other URLs
+    /// are appended to it — <c>https://host/app</c> would yield a callback URI the EHR was
+    /// never registered against.
     /// </summary>
     public static bool IsOrigin(string? url) =>
         Absolute(url) is { } uri && uri.PathAndQuery == "/" && uri.Fragment.Length == 0;

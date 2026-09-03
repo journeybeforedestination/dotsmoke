@@ -1,9 +1,8 @@
 // The chart's tabs, swapped in place rather than navigated to.
 //
-// This is an enhancement and nothing more. Every tab is a real link to a real URL that
-// renders the whole page, so a reader who never gets this file — an old browser, a bad
-// deploy, the moment before it loads — presses the same tabs and reads the same chart.
-// Everything below only spares them the reload.
+// An enhancement and nothing more: every tab is a real link to a real URL that renders the
+// whole page, so a reader who never gets this file presses the same tabs and reads the same
+// chart. Everything below only spares them the reload.
 (() => {
     const app = document.querySelector(".app");
     const tabs = app?.querySelector(".tabs");
@@ -31,11 +30,9 @@
             return;
         }
 
-        // The launch expired, or names a patient this URL disagrees with. Hand it to the
-        // browser: that navigation lands on /error with a sentence explaining it. Showing
-        // the refusal in the pane instead would leave the banner above it still claiming
-        // a patient whose launch is gone, which is the confusion the whole session design
-        // exists to prevent.
+        // The launch expired, or names a patient this URL disagrees with. Handing it to the
+        // browser lands on /error with a sentence; showing the refusal in the pane would
+        // leave the banner above it still claiming a patient whose launch is gone.
         if (!response.ok) {
             location.href = href;
             return;
@@ -74,8 +71,7 @@
         show(tab.href);
     });
 
-    // The address changed, so the back button has to mean something. The same fetch
-    // serves it: a URL naming no panel renders the same "pick a panel" note it renders
-    // on arrival, so going back past the first tab needs no case of its own.
+    // The same fetch serves the back button: a URL naming no panel renders the same "pick a
+    // panel" note it renders on arrival, so going back past the first tab needs no case.
     addEventListener("popstate", () => show(location.href));
 })();

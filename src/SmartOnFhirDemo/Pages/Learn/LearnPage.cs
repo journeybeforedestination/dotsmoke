@@ -12,10 +12,8 @@ namespace SmartOnFhirDemo.Pages.Learn;
 /// </summary>
 public abstract class LearnPage(IMemoryCache cache, TimeProvider clock) : PageModel
 {
-    /// <summary>Where a launch in flight, and an established one, are kept.</summary>
     protected IMemoryCache Cache { get; } = cache;
 
-    /// <summary>The clock a launch's expiry is checked against.</summary>
     protected TimeProvider Clock { get; } = clock;
 
     public override void OnPageHandlerExecuting(PageHandlerExecutingContext context)

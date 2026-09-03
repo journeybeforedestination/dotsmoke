@@ -9,11 +9,10 @@
 <partial name="_Step" model="Model.Step" />
 
 @*
-    The code travels back in the form rather than being stashed on the server between
-    the two requests. It is a credential, and the browser is already holding it — it is
-    in the address bar and in history the moment the EHR redirects here. Caching a copy
-    server-side to avoid a hidden field would create a second place it lives, not a
-    safer one. What the page *shows* is still only enough of it to recognise.
+    The code travels back in the form rather than being stashed on the server between the two
+    requests. The browser is already holding it — address bar and history — the moment the
+    EHR redirects here, so a server-side copy would be a second place it lives, not a safer
+    one. What the page *shows* is still only enough of it to recognise.
 *@
 <form method="post" class="next">
     <input type="hidden" asp-for="Code" />

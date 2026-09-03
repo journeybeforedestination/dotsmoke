@@ -3,18 +3,15 @@ namespace SmartOnFhirDemo;
 /// <summary>
 /// Writes an access log row for every request this app makes to an EHR.
 ///
-/// Captured here rather than in the pages because a new read cannot forget to audit
-/// itself: there is one place requests leave, and this is it. Explicit writes in the page
-/// handlers would be obviously correct on inspection and would fail the way audit logs
-/// usually fail — by a call nobody remembered to add.
+/// Captured here rather than in the pages because a new read cannot forget to audit itself:
+/// there is one place requests leave, and this is it. Explicit writes in the page handlers
+/// would fail the way audit logs usually fail — by a call nobody remembered to add.
 ///
 /// <b>The launch is a constructor argument, and that is load-bearing.</b>
-/// <c>IHttpClientFactory</c> pools handlers for two minutes and gives each its own DI
-/// scope, one that is not the application's and can outlive it. A handler that resolved
-/// "the current launch" from DI would therefore be reused across incoming requests and
-/// attribute one patient's read to another launch — an audit log that misattributes,
-/// which is worse than none. So this is built per launch, at the call site that already
-/// owns the construction, and holds only what it was handed.
+/// <c>IHttpClientFactory</c> pools handlers for two minutes and gives each its own DI scope,
+/// one that is not the request's and outlives it. A handler that resolved "the current
+/// launch" from DI would be reused across incoming requests and attribute one patient's read
+/// to another launch — an audit log that misattributes, which is worse than none.
 /// </summary>
 internal sealed class AccessLogHandler(LaunchContext launch, AccessLog log, TimeProvider clock)
     : DelegatingHandler

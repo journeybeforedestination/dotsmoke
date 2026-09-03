@@ -11,9 +11,6 @@ namespace SmartOnFhirDemo;
 /// and provider into it — so keyed on the raw string, every patient would look like a
 /// different EHR. <see cref="Smart.Origin"/> is the same collapse the trust check makes.
 /// </param>
-/// <param name="PatientId">Whose chart the launch was in, or null before one is known.</param>
-/// <param name="FhirUser">Who was driving the launch, when the EHR said and it checked out.</param>
-/// <param name="RequestPath">Where the read went, relative to the FHIR base.</param>
 /// <param name="Outcome">One of <see cref="AccessOutcome"/>.</param>
 public sealed record AccessLogEntry(
     DateTimeOffset OccurredAt,

@@ -10,20 +10,14 @@ public static class SecurityHeaders
 {
     /// <summary>
     /// <c>default-src 'none'</c>, and then the three things this app actually does.
-    /// <c>style-src</c> is for the single <c>&lt;style&gt;</c> block in the layout;
-    /// <c>script-src 'self'</c> and <c>connect-src 'self'</c> are for
-    /// <c>wwwroot/app.js</c> and the pane it fetches. Both are <c>'self'</c> rather than a
-    /// hash because the script is a file rather than an inline block — nothing here is
-    /// loaded from anywhere but this origin, and no relaxation admits an inline script.
-    /// <c>form-action 'self'</c> leaves the EHR's redirects alone — those are top-level
-    /// GETs, not form posts — and confines the walkthrough's exchange form, the only form
-    /// here, to this app.
+    /// <c>script-src</c> and <c>connect-src</c> are <c>'self'</c> rather than a hash because
+    /// the script is a file rather than an inline block, so no relaxation admits an inline
+    /// script. <c>form-action 'self'</c> leaves the EHR's redirects alone — those are
+    /// top-level GETs, not form posts.
     ///
-    /// <c>frame-ancestors 'none'</c> is a claim about this app rather than about SMART:
-    /// real EHRs often embed a launched app in an iframe, and one that had to be
-    /// embeddable would name the EHR's origin here instead. This one is launched into a
-    /// tab of its own, and a page of patient data that nothing needs to frame should not
-    /// be framable.
+    /// <c>frame-ancestors 'none'</c> is a claim about this app rather than about SMART: an
+    /// app that had to be embeddable would name the EHR's origin here instead. This one is
+    /// launched into a tab of its own.
     /// </summary>
     private const string Policy =
         "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; "

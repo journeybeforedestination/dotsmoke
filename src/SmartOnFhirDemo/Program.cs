@@ -10,31 +10,29 @@ using SmartOnFhirDemo.Pages;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Kestrel names itself in a `Server` header on every response otherwise. It tells a
-// stranger which server this is and nothing this app needs them to know. No test covers
-// it: the integration tests run on TestServer, which has no Kestrel and never emits the
-// header, so an assertion would pass for a reason unrelated to this line.
+// Kestrel names itself in a `Server` header otherwise, which tells a stranger nothing this
+// app needs them to know. Untested on purpose: TestServer has no Kestrel, so an assertion
+// would pass for a reason unrelated to this line.
 builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
 builder.Services.AddRazorPages();
 
-// Bounded, because /launch is a URL a stranger can open and every one of them leaves an
-// entry here for five minutes. Counted in entries rather than bytes: they are all one of
-// two small records, and a count is a number this file can be read and believed about.
+// Bounded, because /launch is a URL a stranger can open and every one leaves an entry here
+// for five minutes. Counted in entries rather than bytes: they are all one of two small
+// records.
 builder.Services.AddMemoryCache(options => options.SizeLimit = LaunchCache.Entries);
 
 // Discovery and the JWKS go through the unnamed client, and both are documents an EHR
-// publishes rather than data it holds — small, and small on every server that works.
-// Bounding the buffer here is what stops one that does not from being read into memory
-// whole; the timeout below is what stops one that never finishes.
+// publishes — small on every server that works. The buffer bound stops one that is not from
+// being read into memory whole; the timeout below stops one that never finishes.
 builder.Services.AddHttpClient(
     Options.DefaultName,
     client => client.MaxResponseContentBufferSize = 512 * 1024
 );
 
-// Named so its handler can be taken from the pool and wrapped per launch by the access
-// log. No content bound: a Bundle legitimately is large, and this one is answering to a
-// launch that was authorized rather than to anyone who can open a URL.
+// Named so its handler can be taken from the pool and wrapped per launch by the access log.
+// No content bound: a Bundle legitimately is large, and this one answers to a launch that
+// was authorized rather than to anyone who can open a URL.
 builder.Services.AddHttpClient(FhirClients.Name);
 
 // One limiter for the process, and a singleton because of it: IHttpClientFactory pools
@@ -46,10 +44,9 @@ builder.Services.AddTransient(services => new EhrTrafficHandler(
     EhrTraffic.MaxWait
 ));
 
-// The default timeout is 100 seconds, which is a long time to hold a request open on
-// behalf of someone who only had to type a URL to start it. Both this and the limiter go
-// on the defaults rather than on each registration, so a client added later cannot forget
-// either one.
+// The default timeout is 100 seconds, a long time to hold a request open for someone who
+// only had to type a URL. On the defaults rather than each registration, so a client added
+// later cannot forget it or the limiter.
 builder.Services.ConfigureHttpClientDefaults(http =>
     http.ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(30))
         .AddHttpMessageHandler<EhrTrafficHandler>()
@@ -66,12 +63,11 @@ builder.Services.AddDbContext<AccessLogContext>(options =>
 );
 builder.Services.AddScoped<AccessLog>();
 
-// The learn walkthrough's exchange is a real form post, so antiforgery is live, so these
-// keys are what sign its token. Left unpersisted, a container mints a ring at every boot
-// and a reader sitting on step 4 across a deploy fails at the exchange with a message
-// naming nothing useful. Its own setting rather than a directory taken from the access
-// log's: that one is a connection string, and "Data Source=app.db" names no directory to
-// take. Deployments point both at one volume.
+// The learn walkthrough's exchange is a real form post, so antiforgery is live and these
+// keys sign its token. Unpersisted, a container mints a ring at every boot and a reader
+// sitting on step 4 across a deploy fails the exchange with a message naming nothing useful.
+// Its own setting rather than the access log's directory: that one is a connection string,
+// and "Data Source=app.db" names no directory to take.
 builder
     .Services.AddDataProtection()
     .PersistKeysToFileSystem(
@@ -116,12 +112,10 @@ var app = builder.Build();
 // misconfigured app would leave a database behind on its way to refusing to run.
 app.Services.GetRequiredService<IStartupValidator>().Validate();
 
-// Right for a single-instance demo, and briefly untrue on every deploy: Kamal boots the
-// new container and waits for its health check before stopping the old one, so for a few
-// seconds two processes hold this file and one of them migrates while the other is still
-// serving. Accepted knowingly — one droplet, one SQLite file, migrations that add — and
-// recorded in docs/deploying.md. With real replicas, migrating is a deploy
-// step run once rather than a race between processes starting.
+// Right for a single-instance demo, and briefly untrue on every deploy: Kamal waits for the
+// new container's health check before stopping the old one, so for a few seconds two
+// processes hold this file and one migrates while the other serves. Accepted knowingly —
+// one droplet, one SQLite file, migrations that add — and recorded in docs/deploying.md.
 using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<AccessLogContext>().Database.Migrate();
 
@@ -146,26 +140,21 @@ app.Use(
     }
 );
 
-// The one static file this app serves, and what serves it. MapStaticAssets fingerprints
-// and precompresses at build time; WithStaticAssets is what lets the layout's plain
-// `src="~/app.js"` resolve to the fingerprinted name, and without it the tag renders the
-// unfingerprinted path — which still works, and quietly gives up the caching.
+// MapStaticAssets fingerprints and precompresses at build time; WithStaticAssets is what
+// lets the layout's plain `src="~/app.js"` resolve to the fingerprinted name. Without it the
+// tag still works, and quietly gives up the caching.
 app.MapStaticAssets();
 
 app.MapRazorPages().WithStaticAssets();
 
-// What a proxy asks before it sends a reader here. The path is kamal-proxy's default, so
-// matching it means a deployment configures no health check at all.
-//
-// Shallow on purpose: the migration above runs before the app serves, so a volume that is
-// missing or unwritable has already stopped the container, and a check that reopened the
-// database every second would re-prove that forever.
+// The path is kamal-proxy's default, so matching it means a deployment configures no health
+// check at all. Shallow on purpose: the migration above runs before the app serves, so a
+// volume that is missing or unwritable has already stopped the container.
 app.MapGet("/up", () => Results.Ok());
 
-// Step 1 of the SMART EHR launch. The EHR opens this URL in the user's browser with
-// the FHIR base URL (iss) and an opaque launch id. SmartLaunch does the protocol; this
-// endpoint holds the launch until the EHR redirects back, and turns the outcome into
-// a response.
+// Step 1 of the SMART EHR launch: the EHR opens this URL with the FHIR base URL (iss) and
+// an opaque launch id. SmartLaunch does the protocol; this endpoint holds the launch until
+// the EHR redirects back.
 app.MapGet(
     "/launch",
     async (
@@ -194,12 +183,9 @@ app.MapGet(
     }
 );
 
-// Steps 2 and 3, and where this app becomes stateful. SmartLaunch trades the code for an
-// access token and reads the patient; this files the result against the browser and hands
-// the reader a URL naming it.
-//
-// It renders nothing, deliberately. The authorization code leaves the address bar with the
-// redirect, and a refresh stops re-sending a code that has already been spent.
+// Steps 2 and 3, and where this app becomes stateful. It renders nothing, deliberately: the
+// authorization code leaves the address bar with the redirect, and a refresh stops
+// re-sending a code that has already been spent.
 app.MapGet(
     "/callback",
     async (
@@ -247,12 +233,11 @@ app.Run();
 
 // Every way a launch can fail lands on the same page, with a sentence saying which.
 //
-// The sentence travels in TempData rather than in the redirect's query string. It is this
-// app's own text either way, and a page that renders whatever a URL carries is a page a
-// stranger can put their own words on — in this app's voice, on this app's domain, with no
-// script needed and nothing in the CSP that could stop it. TempData rides in a cookie the
-// data protection ring signs, so only this app can write one. It also keeps the launch id
-// and the patient out of a URL that would otherwise sit in browser history.
+// The sentence travels in TempData rather than the redirect's query string: a page that
+// renders whatever a URL carries is a page a stranger can put their own words on, in this
+// app's voice and on its domain, with nothing in the CSP that could stop it. TempData rides
+// in a cookie the data protection ring signs, and keeps the launch id and the patient out of
+// browser history.
 static IResult Fail(HttpContext http, string message)
 {
     var tempData = http
