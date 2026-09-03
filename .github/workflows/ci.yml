@@ -82,7 +82,12 @@ jobs:
     # Merges only. A pull request from a fork could not be given packages: write anyway,
     # and an image per branch would be noise in a registry the deploy reads by commit.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
+    # Deliberately not `needs: build`. This job restores and compiles from scratch for
+    # linux-x64, so it consumes nothing that job produces and only ever waited on it as a
+    # gate — a gate `deploy` already enforces by needing both. Run in parallel and the
+    # push-to-live path loses a whole job from its critical path. What a red build costs
+    # is then an image tag nobody pulls: `deploy` still will not run, and the tag is this
+    # commit's rather than `latest`, so nothing resolves to it by accident.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Widened from the file-level contents: read, and only here.
@@ -150,9 +155,11 @@ jobs:
 
   deploy:
     name: Deploy to the droplet
-    # Merges only, and after the image it names exists rather than beside it.
+    # Merges only, and after the image it names exists rather than beside it. Both jobs,
+    # not just `publish`: with the two now running in parallel, this is the only place the
+    # build gate still stands between a commit and the droplet.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: publish
+    needs: [build, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # What keeps the deploy key out of reach of everything except this job.
