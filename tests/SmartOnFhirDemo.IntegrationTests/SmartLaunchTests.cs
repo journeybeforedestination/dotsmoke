@@ -185,6 +185,25 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.Contains(pane.Trim(), page);
     }
 
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_app_shows_a_launch_the_requests_it_made()
+    {
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+        var html = await ReadAsync(client, $"{landed}&show={ChartPanel.Conditions.Slug}");
+
+        // The probe and the patient read happened before this page was first rendered, so a
+        // launch-scoped log is complete from the launch rather than from the first tab.
+        Assert.Contains("The server's capability statement", html);
+        Assert.Contains($"A read of Patient", html);
+
+        // And the panel this URL asked for, which is read while the page is being rendered:
+        // the section is built after the panels for exactly this reason.
+        Assert.Contains("A search for Condition", html);
+        Assert.Contains($"Patient/{launcher.PatientId}", html);
+    }
+
     private static async Task<string> ReadAsync(HttpClient client, string url)
     {
         using var response = await client.GetAsync(
