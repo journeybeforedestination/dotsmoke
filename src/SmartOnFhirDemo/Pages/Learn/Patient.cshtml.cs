@@ -8,8 +8,13 @@ namespace SmartOnFhirDemo.Pages.Learn;
 /// the app the handshake was for. Everything above it explained a step; this renders the
 /// thing the steps were for.
 /// </summary>
-public class PatientModel(IMemoryCache cache, Chart chart, AccessLog log, TimeProvider clock)
-    : LearnPage(cache, log, clock)
+public class PatientModel(
+    IMemoryCache cache,
+    Chart chart,
+    AccessLog log,
+    AccessLogReader access,
+    TimeProvider clock
+) : LearnPage(cache, log, clock)
 {
     public LaunchStep Step { get; private set; } = default!;
 
@@ -29,6 +34,9 @@ public class PatientModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
         App = new AppView(
             view.Rendered.Summary,
             await PanelsAsync(view, show, ct),
+            // After the panels, not before: reading one is itself a logged request, and a
+            // section built first would be missing the read the page it is on just made.
+            await AccessAsync(view, ct),
             view.Rendered.RawJson
         );
 
@@ -51,6 +59,27 @@ public class PatientModel(IMemoryCache cache, Chart chart, AccessLog log, TimePr
         await LaunchAsync(id, patient, ct) is { } view
             ? Partial("_Pane", await PanelsAsync(view, show, ct))
             : new StatusCodeResult(StatusCodes.Status409Conflict);
+
+    /// <summary>
+    /// The access section alone, for the script to refresh after a tab swapped the pane. Same
+    /// guard, same refusal: this is a launch's own trail, and no launch may be handed
+    /// another's — which is exactly what the launch-scoped query below rests on.
+    /// </summary>
+    public async Task<IActionResult> OnGetAccessAsync(
+        string? id,
+        string? patient,
+        CancellationToken ct
+    ) =>
+        await LaunchAsync(id, patient, ct) is { } view
+            ? Partial("_Access", await AccessAsync(view, ct))
+            : new StatusCodeResult(StatusCodes.Status409Conflict);
+
+    /// <summary>One row past what the section shows, so a list that was cut can say so.</summary>
+    private async Task<AccessView> AccessAsync(LaunchView view, CancellationToken ct) =>
+        AccessView.Of(
+            view.Facts,
+            await access.ForLaunchAsync(view.Facts.LaunchId, AccessView.Rows + 1, ct)
+        );
 
     private Task<ChartView> PanelsAsync(LaunchView view, string? show, CancellationToken ct) =>
         chart.ViewAsync(BrowserSession.Current(HttpContext), view.Facts, show, ct);

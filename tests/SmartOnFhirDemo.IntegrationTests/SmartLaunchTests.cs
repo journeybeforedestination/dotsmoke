@@ -46,7 +46,10 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         var (_, pause) = await LearnAsync(client, patientId);
         var (landed, _) = await ExchangeAsync(client, pause);
 
-        var app = new Uri($"/learn/patient{landed.Query}", UriKind.Relative);
+        // Absolute, resolved against where the exchange landed. Callers read .Query and
+        // .GetLeftPart off this, and both throw on a relative URI — and a relative one also
+        // parses as a *file path* on Unix, so what reaches HttpClient is file:///learn/patient.
+        var app = new Uri(landed, $"/learn/patient{landed.Query}");
 
         return (app, await ReadAsync(client, app.ToString()));
     }
@@ -185,10 +188,51 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.Contains(pane.Trim(), page);
     }
 
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task A_swapped_access_log_and_a_navigated_one_are_the_same_markup()
+    {
+        // The same claim as the pane's, for the section the script refreshes beside it. It
+        // has to hold or the log contradicts the thing it teaches: press a tab and the
+        // search you just caused would be missing from the trail of what you caused.
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+        var panel = $"{landed}&show={ChartPanel.Vitals.Slug}";
+
+        var page = await ReadAsync(client, panel);
+        var section = await ReadAsync(client, $"{panel}&handler=access");
+
+        Assert.DoesNotContain("<!DOCTYPE html>", section);
+        Assert.Contains(section.Trim(), page);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task The_app_shows_a_launch_the_requests_it_made()
+    {
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+        var html = await ReadAsync(client, $"{landed}&show={ChartPanel.Conditions.Slug}");
+
+        // The probe and the patient read happened before this page was first rendered, so a
+        // launch-scoped log is complete from the launch rather than from the first tab.
+        // Without the apostrophe, which Razor encodes: this asserts what the row says, not
+        // how HTML spells it.
+        Assert.Contains("capability statement", html);
+        Assert.Contains($"A read of Patient", html);
+
+        // And the panel this URL asked for, which is read while the page is being rendered:
+        // the section is built after the panels for exactly this reason.
+        Assert.Contains("A search for Condition", html);
+        Assert.Contains($"Patient/{launcher.PatientId}", html);
+    }
+
     private static async Task<string> ReadAsync(HttpClient client, string url)
     {
+        // RelativeOrAbsolute so that a path is resolved against the client's BaseAddress
+        // rather than parsed as a file path, which is what a leading "/" means on Unix.
         using var response = await client.GetAsync(
-            new Uri(url),
+            new Uri(url, UriKind.RelativeOrAbsolute),
             TestContext.Current.CancellationToken
         );
 

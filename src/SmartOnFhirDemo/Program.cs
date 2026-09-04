@@ -60,6 +60,10 @@ builder.Services.AddDbContext<AccessLogContext>(options =>
 );
 builder.Services.AddScoped<AccessLog>();
 
+// Its own type rather than two more methods on AccessLog: what records a read stays unable
+// to query, which is the reason that type exists at all.
+builder.Services.AddScoped<AccessLogReader>();
+
 // The learn walkthrough's exchange is a real form post, so antiforgery is live and these
 // keys sign its token. Unpersisted, a container mints a ring at every boot and a reader
 // sitting on step 4 across a deploy fails the exchange with a message naming nothing useful.

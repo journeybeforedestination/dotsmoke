@@ -289,6 +289,17 @@
         .app .entries li:last-child { border-bottom: none; }
         .app > details { margin: 0; padding: 0 1.5rem 1.25rem; }
 
+        /* Ruled off from the chart above it, because it is about the chart rather than part
+           of it: everything above is what the EHR said, and this is what the asking left. */
+        .app .access { padding: 1.25rem 1.5rem; border-top: 1px solid var(--line); }
+        .app .access h3 { margin: 0; font-size: 1rem; }
+        .app .access p { font-size: .9375rem; }
+        .app .access details { margin-top: 1rem; }
+        .app .access .log .at { color: var(--muted); font-variant-numeric: tabular-nums; }
+        /* On its own line, and full width: a FHIR request wrapped mid-path is unreadable,
+           and it is the half of the row worth reading closely. */
+        .app .access .log code { display: block; margin-top: .25rem; overflow-wrap: anywhere; }
+
         .next { display: flex; flex-wrap: wrap; gap: .625rem; margin: 2rem 0 0; }
         .button, .next button {
             display: inline-block;

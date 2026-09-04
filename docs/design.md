@@ -33,6 +33,15 @@ The access token outlives the request that fetched it, filed against the browser
 session cookie and expiring when the EHR said it stops working. That is what a
 walkthrough you can step through, and an app you can return to, costs.
 
+The log is also something the app shows, at the end of the walkthrough: a launch
+can expand its own rows. Scoped by launch id rather than by issuer and patient,
+which is why the column exists — the wider scope would show one clinician the times
+and panels another had read from the same chart, from a page that never asked
+whether they may know that. `AccessLog` writes and `AccessLogReader` reads; keeping
+them apart is what lets the writing seam stay unable to query. The question the
+older index answers, "who has been in this chart, lately", the app answers to
+nobody: it needs an audience this app cannot authenticate.
+
 ## The app bounds its own traffic, not the EHR's
 
 `/learn` is a URL a stranger can open, and every launch drives requests at someone
@@ -111,6 +120,16 @@ which is the whole thing the page's own check exists to stop.
 A refusal answers with a status rather than a redirect, and the script's fallback is
 to navigate for real and land on `/error`. Swapping the refusal into the pane instead
 would leave the banner above it still naming a patient whose launch is gone.
+
+`?handler=access` renders the access section the same way, through the same guard,
+and the script refreshes it after the pane rather than beside it: reading a panel is
+itself a logged request, so a section fetched in parallel would race the row it
+exists to show. Without the refresh the log would be right on arrival and silently
+wrong from the first tab press — missing the one request the reader just caused.
+
+The swap replaces the contents of a div inside the section's `<details>` rather than
+the `<details>` itself, which would reset `open` and collapse the log under whoever
+had just expanded it.
 
 ## The walkthrough is a pure projection
 

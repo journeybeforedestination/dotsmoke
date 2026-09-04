@@ -8,22 +8,42 @@
     const tabs = app?.querySelector(".tabs");
     const pane = app?.querySelector(".pane");
 
-    // Every page but the two the chart is on.
+    // The contents of the access section, inside its <details> rather than around it:
+    // replacing the <details> would reset `open` and collapse the log under a reader on
+    // every tab press. Nothing would error; it would just feel broken.
+    const log = app?.querySelector(".access .log");
+
+    // Every page but the one the chart is on.
     if (!tabs || !pane) return;
 
-    // The URL the tab already carries, asking its page for the pane alone. The page and
-    // the pane are one handler apart, so there is no second address to keep in step.
-    const paneUrl = (href) => {
+    // The URL the tab already carries, asking its page for one part of itself. The page and
+    // its parts are one handler apart, so there is no second address to keep in step.
+    const partUrl = (href, handler) => {
         const url = new URL(href);
-        url.searchParams.set("handler", "pane");
+        url.searchParams.set("handler", handler);
         return url;
+    };
+
+    // Without this the section is right on arrival and quietly wrong afterwards: press a tab,
+    // expand the log, and the search that press just caused is missing — the log contradicting
+    // the exact thing it teaches. A failure here leaves the rows a reader already has rather
+    // than navigating away from a pane that just arrived; the next press asks again.
+    const refreshLog = async (href) => {
+        if (!log) return;
+
+        try {
+            const response = await fetch(partUrl(href, "access"));
+            if (response.ok) log.innerHTML = await response.text();
+        } catch {
+            // Nothing to do that is better than leaving the log as it was.
+        }
     };
 
     const show = async (href) => {
         let response;
 
         try {
-            response = await fetch(paneUrl(href));
+            response = await fetch(partUrl(href, "pane"));
         } catch {
             // Offline, or the app went away mid-read. The navigation says so properly.
             location.href = href;
@@ -39,6 +59,10 @@
         }
 
         pane.innerHTML = await response.text();
+
+        // After the pane, never alongside it: reading a panel is itself a logged request,
+        // and a section fetched in parallel would race the row it exists to show.
+        await refreshLog(href);
 
         for (const tab of tabs.querySelectorAll("a")) {
             if (tab.href === href) tab.setAttribute("aria-current", "page");

@@ -1,0 +1,46 @@
+@*
+    This launch's access log, split out of _App so `?handler=access` can render just this
+    much. The contents of the div rather than the div itself — the wrapper is what the
+    script holds on to — and the div rather than the <details> around it: re-rendering a
+    <details> resets `open`, so the log a reader had expanded would collapse under them on
+    every tab press. Nothing would error; it would just feel broken.
+*@
+@model AccessView
+
+<p class="note">
+    Recorded against <code>@Model.IssuerOrigin</code>,
+    @if (Model.FhirUser is { } user)
+    {
+        <text>for <code>@user</code>.</text>
+    }
+    else
+    {
+        <text>with nobody named — this EHR did not say who was signed in.</text>
+    }
+</p>
+
+@if (Model.Lines.Any())
+{
+    <ol class="entries">
+        @foreach (var line in Model.Lines)
+        {
+            <li>
+                <span class="at">@line.At</span> @line.Asked — @line.Answer
+                <code>@line.Request</code>
+            </li>
+        }
+    </ol>
+
+    @if (Model.Truncated)
+    {
+        <p class="note">
+            The most recent @AccessView.Rows requests, and this launch has made more.
+        </p>
+    }
+}
+else
+{
+    @* Reachable only for a launch established before this column existed: its rows are on
+       disk, attributed to no launch, and deliberately not guessed at. *@
+    <p class="note">No requests are recorded against this launch.</p>
+}

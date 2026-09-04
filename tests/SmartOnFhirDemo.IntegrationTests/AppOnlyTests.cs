@@ -128,6 +128,21 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     }
 
     [Fact]
+    public async Task An_access_log_asked_for_without_a_session_is_refused_rather_than_rendered()
+    {
+        // The section shows one launch its own rows, so reaching it without resolving a
+        // launch would be a way to read which patients somebody else's launch had opened.
+        // The same guard and the same status as the pane, for the same reason.
+        using var client = app.CreateDirectClient();
+        using var response = await client.GetAsync(
+            "/learn/patient?handler=access&id=never-issued&patient=123",
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
     public async Task A_pane_refuses_to_be_stored_for_the_same_reason_the_page_does()
     {
         // It carries the patient data the page carries, and the handler filter that says
@@ -287,6 +302,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [InlineData("/learn/callback")]
     [InlineData("/learn/token?id=never-issued&patient=pat-1")]
     [InlineData("/learn/patient?id=never-issued&patient=pat-1")]
+    [InlineData("/learn/patient?handler=access&id=never-issued&patient=pat-1")]
     public async Task Every_narrated_launch_route_refuses_to_be_stored(string url)
     {
         // Not followed: the header goes on whatever the learn route itself answers, and

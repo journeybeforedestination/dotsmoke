@@ -37,6 +37,29 @@
         <partial name="_Pane" model="Model.Chart" />
     </div>
 
+    @*
+        Below the chart and above the raw resource: what the app did is a first-class idea
+        here, and the JSON is an appendix.
+    *@
+    <section class="access">
+        <h3>The EHR wrote all of this down</h3>
+
+        <p>
+            A real EHR audits every read, and so does this one: each request above left a row
+            naming the launch that caused it, not what came back. Below is this launch's own
+            trail — FHIR requests only, so discovery, the token exchange and the JWKS fetch
+            that steps ① to ⑤ narrated are not in it. Nor is opening this list: reading the
+            log touches no EHR.
+        </p>
+
+        <details>
+            <summary>What this launch asked the EHR for</summary>
+            <div class="log">
+                <partial name="_Access" model="Model.Access" />
+            </div>
+        </details>
+    </section>
+
     <details>
         <summary>Raw Patient resource</summary>
         <pre>@Model.RawJson</pre>
