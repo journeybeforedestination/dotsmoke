@@ -8,7 +8,8 @@ namespace SmartOnFhirDemo.Pages.Learn;
 /// because they are one moment: the credential arriving is what forces the question of
 /// where it may live.
 /// </summary>
-public class TokenModel(IMemoryCache cache, TimeProvider clock) : LearnPage(cache, clock)
+public class TokenModel(IMemoryCache cache, AccessLog log, TimeProvider clock)
+    : LearnPage(cache, log, clock)
 {
     public IReadOnlyList<LaunchStep> Steps { get; private set; } = [];
 
@@ -16,9 +17,9 @@ public class TokenModel(IMemoryCache cache, TimeProvider clock) : LearnPage(cach
 
     public string PatientId { get; private set; } = "";
 
-    public IActionResult OnGet(string? id, string? patient)
+    public async Task<IActionResult> OnGetAsync(string? id, string? patient, CancellationToken ct)
     {
-        if (Launch(id, patient) is not { } view)
+        if (await LaunchAsync(id, patient, ct) is not { } view)
             return Relaunch(patient);
 
         (LaunchId, PatientId) = (view.Facts.LaunchId, view.Facts.PatientId);

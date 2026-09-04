@@ -437,8 +437,7 @@ public static class LaunchTranscript
             "The launch is done",
             "The app now holds an access token, filed against your browser's session — it is "
                 + "authorized, and can go on reading this patient from the EHR for as long as the "
-                + "token lasts. Everything below is the app itself, the same page a plain launch "
-                + "lands on, with nothing explained.",
+                + "token lasts. Everything below is the app itself, with nothing explained.",
             []
         );
 

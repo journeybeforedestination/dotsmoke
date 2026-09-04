@@ -38,33 +38,9 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     }
 
     [Fact]
-    public async Task A_launch_url_opened_directly_explains_itself()
-    {
-        var html = await app.GetAsync("/launch");
-
-        Assert.Contains("meant to be opened by an EHR", html);
-    }
-
-    [Fact]
-    public async Task A_launch_missing_only_the_launch_id_is_still_refused()
-    {
-        var html = await app.GetAsync("/launch?iss=https://ehr.example/fhir");
-
-        Assert.Contains("meant to be opened by an EHR", html);
-    }
-
-    [Fact]
-    public async Task A_callback_for_an_unknown_launch_is_refused()
-    {
-        var html = await app.GetAsync("/callback?code=whatever&state=never-issued");
-
-        Assert.Contains("expired or was already completed", html);
-    }
-
-    [Fact]
     public async Task A_callback_carrying_an_authorization_error_reports_it()
     {
-        var html = await app.GetAsync("/callback?error=access_denied&error_description=Nope");
+        var html = await app.GetAsync("/learn/callback?error=access_denied&error_description=Nope");
 
         Assert.Contains("The EHR refused the authorization request", html);
         Assert.Contains("Nope", html);
@@ -74,7 +50,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     public async Task A_launch_against_an_unreachable_issuer_is_reported()
     {
         var html = await app.GetAsync(
-            $"/launch?iss={AppFixture.UnreachableIssuer}/fhir&launch=irrelevant"
+            $"/learn?iss={AppFixture.UnreachableIssuer}/fhir&launch=irrelevant"
         );
 
         Assert.Contains("Could not read the SMART configuration", html);
@@ -86,30 +62,13 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [InlineData("https://app.test@evil.example/fhir")]
     public async Task A_launch_from_an_untrusted_issuer_is_refused(string iss)
     {
-        var html = await app.GetAsync($"/launch?iss={Uri.EscapeDataString(iss)}&launch=irrelevant");
+        var html = await app.GetAsync($"/learn?iss={Uri.EscapeDataString(iss)}&launch=irrelevant");
 
         Assert.Contains("not registered to launch from that EHR", html);
     }
 
     [Fact]
-    public async Task Refusing_an_untrusted_issuer_does_not_echo_it_back()
-    {
-        var html = await app.GetAsync("/launch?iss=https://evil.example/fhir&launch=irrelevant");
-
-        // The rejected value is attacker-controlled; it belongs in the log, not the page.
-        Assert.DoesNotContain("evil.example", html);
-    }
-
-    [Fact]
     public async Task The_home_page_shows_the_launch_url_to_paste_into_the_ehr()
-    {
-        var html = await app.GetAsync("/");
-
-        Assert.Contains($"http://{AppFixture.AppHost}/launch", html);
-    }
-
-    [Fact]
-    public async Task The_home_page_offers_the_narrated_launch_as_well()
     {
         var html = await app.GetAsync("/");
 
@@ -119,20 +78,20 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     // ---- Two values name a launch, and neither answers alone ---------------
 
     [Fact]
-    public async Task A_summary_without_a_session_cookie_resolves_nothing()
+    public async Task A_chart_without_a_session_cookie_resolves_nothing()
     {
         // A launch id in a URL is not a bearer token: browser history and Referer headers
         // are full of URLs, and none of them carry this app's cookie.
-        var html = await app.GetAsync("/summary?id=never-issued");
+        var html = await app.GetAsync("/learn/patient?id=never-issued");
 
         Assert.Contains("expired or was already completed", html);
     }
 
     [Fact]
-    public async Task A_summary_with_a_cookie_but_an_unknown_launch_id_resolves_nothing()
+    public async Task A_chart_with_a_cookie_but_an_unknown_launch_id_resolves_nothing()
     {
         var html = await app.GetAsync(
-            "/summary?id=never-issued",
+            "/learn/patient?id=never-issued",
             cookie: $"{BrowserSession.CookieName}=a-browser-that-launched-something-else"
         );
 
@@ -143,7 +102,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     public async Task A_cookie_on_its_own_does_not_say_which_launch_is_meant()
     {
         var html = await app.GetAsync(
-            "/summary",
+            "/learn/patient",
             cookie: $"{BrowserSession.CookieName}=a-browser-that-launched-something-else"
         );
 
@@ -152,12 +111,8 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
 
     // ---- The pane a tab swaps in is behind the same guard as the page -----
 
-    [Theory]
-    [InlineData("/summary")]
-    [InlineData("/learn/patient")]
-    public async Task A_pane_asked_for_without_a_session_is_refused_rather_than_rendered(
-        string page
-    )
+    [Fact]
+    public async Task A_pane_asked_for_without_a_session_is_refused_rather_than_rendered()
     {
         // The pane is a second way into the chart, so it is a second way to read a patient
         // this browser never launched — unless it resolves the launch exactly as the page
@@ -165,7 +120,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         // for real, which lands on the page that explains it.
         using var client = app.CreateDirectClient();
         using var response = await client.GetAsync(
-            $"{page}?handler=pane&id=never-issued&patient=123&show=conditions",
+            "/learn/patient?handler=pane&id=never-issued&patient=123&show=conditions",
             TestContext.Current.CancellationToken
         );
 
@@ -179,7 +134,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
         // no-store is on the page rather than on one of its handlers.
         using var client = app.CreateDirectClient();
         using var response = await client.GetAsync(
-            "/summary?handler=pane&id=never-issued",
+            "/learn/patient?handler=pane&id=never-issued",
             TestContext.Current.CancellationToken
         );
 
@@ -203,20 +158,6 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
             "script-src 'self'",
             response.Headers.GetValues("Content-Security-Policy").Single()
         );
-    }
-
-    [Fact]
-    public async Task The_summary_refuses_to_be_stored()
-    {
-        // Unlike the callback it replaced, this URL is stable and can be returned to, so
-        // what a browser or a proxy keeps of a page of patient data is worth saying.
-        using var client = app.CreateDirectClient();
-        using var response = await client.GetAsync(
-            "/summary?id=never-issued",
-            TestContext.Current.CancellationToken
-        );
-
-        Assert.Contains("no-store", response.Headers.CacheControl?.ToString());
     }
 
     [Fact]
@@ -265,7 +206,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     {
         // The other half of the same change: the sentences are still the lesson, they just
         // travel in a cookie the data protection ring signs rather than in the URL.
-        var html = await app.GetAsync("/launch?iss=https://evil.example/fhir&launch=irrelevant");
+        var html = await app.GetAsync("/learn?iss=https://evil.example/fhir&launch=irrelevant");
 
         Assert.Contains("not registered to launch from that EHR", html);
     }
@@ -280,8 +221,6 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
 
         Assert.False(response.Headers.Contains("Strict-Transport-Security"));
     }
-
-    // ---- The narrated launch fails the same way the plain one does ---------
 
     [Theory]
     [InlineData("/learn")]
@@ -326,8 +265,8 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     [InlineData("/learn/patient?id=never-issued&patient=pat-1")]
     public async Task A_narrated_page_whose_launch_is_gone_asks_for_a_new_one(string url)
     {
-        // The narrated launch resolves its own launch exactly as the plain summary does,
-        // so it refuses the same way and names the patient the page had been showing.
+        // Every step resolves its launch through the one guard, so they refuse the same
+        // way and name the patient the page had been showing.
         var html = await app.GetAsync(url);
 
         Assert.Contains("This launch is no longer open", html);
@@ -335,7 +274,7 @@ public class AppOnlyTests(AppFixture app) : IClassFixture<AppFixture>
     }
 
     [Fact]
-    public async Task A_narrated_page_is_no_more_reachable_without_a_cookie_than_the_summary_is()
+    public async Task A_narrated_page_is_no_more_reachable_without_a_cookie_than_any_other()
     {
         // Same two values, same rule: the URL selects and the cookie authenticates.
         var html = await app.GetAsync("/learn/patient?id=never-issued&patient=pat-1");

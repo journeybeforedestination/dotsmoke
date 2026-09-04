@@ -5,10 +5,11 @@ using Hl7.Fhir.Utility;
 namespace SmartOnFhirDemo;
 
 /// <summary>
-/// What to tell the user when a launch does not reach a page. The plain launch and the
-/// narrated one fail identically, so the mapping lives here rather than in each of them —
-/// which also keeps the exhaustiveness check in one place: a new outcome breaks this switch
-/// instead of quietly reaching a caller that has not been taught about it.
+/// What to tell the user when a launch does not reach a page. Every step of the
+/// walkthrough fails into the same sentence for the same reason, so the mapping lives here
+/// rather than in each of them — which also keeps the exhaustiveness check in one place: a
+/// new outcome breaks this switch instead of quietly reaching a caller that has not been
+/// taught about it.
 /// </summary>
 public static class LaunchMessages
 {
@@ -29,7 +30,7 @@ public static class LaunchMessages
         "This launch has expired or was already completed. Start a new launch from the EHR.";
 
     /// <summary>
-    /// What a summary says when its launch will not resolve. Expiry, an unknown launch and
+    /// What a page says when its launch will not resolve. Expiry, an unknown launch and
     /// a patient mismatch all land here: there is nothing a reader can do differently about
     /// any of them, and the distinction is kept where it can be acted on — the access log.
     /// </summary>
@@ -38,21 +39,6 @@ public static class LaunchMessages
             ? UnknownLaunch
             : $"This launch is no longer open. Start a new launch for patient {patientId} "
                 + "from the EHR.";
-
-    /// <summary>
-    /// The one line the summary pages carry about who is driving the launch. A name when
-    /// the app could establish one, and otherwise the reason it could not — never silence,
-    /// because "no name shown" and "nobody was named" are worth telling apart.
-    /// </summary>
-    public static string WhoLaunchedIt(CallbackOutcome.Completed completed) =>
-        completed switch
-        {
-            { User: { Name: { } name, ResourceType: var type } } => $"Launched by {name} ({type}).",
-            { User: { ResourceType: var type } } => $"Launched by an unnamed {type}.",
-            { UserUnavailable: { } why } => why,
-            { IdentityUnavailable: { } why } => why,
-            _ => "The EHR named nobody in the id_token it returned.",
-        };
 
     /// <summary>
     /// What an OperationOutcome actually says, flattened to a sentence. FHIR servers put
