@@ -1,12 +1,9 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using SmartOnFhirDemo;
-using SmartOnFhirDemo.Pages;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +14,7 @@ builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
 builder.Services.AddRazorPages();
 
-// Bounded, because /launch is a URL a stranger can open and every one leaves an entry here
+// Bounded, because /learn is a URL a stranger can open and every one leaves an entry here
 // for five minutes. Counted in entries rather than bytes: they are all one of two small
 // records.
 builder.Services.AddMemoryCache(options => options.SizeLimit = LaunchCache.Entries);
@@ -152,105 +149,7 @@ app.MapRazorPages().WithStaticAssets();
 // volume that is missing or unwritable has already stopped the container.
 app.MapGet("/up", () => Results.Ok());
 
-// Step 1 of the SMART EHR launch: the EHR opens this URL with the FHIR base URL (iss) and
-// an opaque launch id. SmartLaunch does the protocol; this endpoint holds the launch until
-// the EHR redirects back.
-app.MapGet(
-    "/launch",
-    async (
-        string? iss,
-        string? launch,
-        HttpContext http,
-        IOptions<SmartOptions> options,
-        SmartLaunch smart,
-        IMemoryCache cache,
-        CancellationToken ct
-    ) =>
-    {
-        var redirectUri = options.Value.Url("/callback");
-
-        var outcome = await smart.BeginAsync(iss, launch, redirectUri, ct);
-
-        return outcome is LaunchOutcome.Prepared prepared
-            ? Remember(prepared)
-            : Fail(http, LaunchMessages.For(outcome));
-
-        IResult Remember(LaunchOutcome.Prepared prepared)
-        {
-            cache.Remember(prepared);
-            return Results.Redirect(prepared.AuthorizeUrl);
-        }
-    }
-);
-
-// Steps 2 and 3, and where this app becomes stateful. It renders nothing, deliberately: the
-// authorization code leaves the address bar with the redirect, and a refresh stops
-// re-sending a code that has already been spent.
-app.MapGet(
-    "/callback",
-    async (
-        string? code,
-        string? state,
-        string? error,
-        [FromQuery(Name = "error_description")] string? errorDescription,
-        HttpContext http,
-        IOptions<SmartOptions> options,
-        SmartLaunch smart,
-        IMemoryCache cache,
-        TimeProvider clock,
-        CancellationToken ct
-    ) =>
-    {
-        var (outcome, context) = await smart.CompleteAsync(
-            code,
-            state,
-            error,
-            errorDescription,
-            cache.ClaimLaunch(state),
-            ct
-        );
-
-        if (outcome is not CallbackOutcome.Completed completed || context is null)
-            return Fail(http, LaunchMessages.For(outcome));
-
-        cache.RememberLaunch(
-            BrowserSession.Establish(http, options.Value.IsSecure),
-            context,
-            completed,
-            clock
-        );
-
-        // The patient goes in the URL so every page after this says which one it believes
-        // it is showing, and can be told it is wrong.
-        return Results.Redirect(
-            $"/summary?id={Uri.EscapeDataString(context.LaunchId)}"
-                + $"&patient={Uri.EscapeDataString(context.PatientId)}"
-        );
-    }
-);
-
 app.Run();
-
-// Every way a launch can fail lands on the same page, with a sentence saying which.
-//
-// The sentence travels in TempData rather than the redirect's query string: a page that
-// renders whatever a URL carries is a page a stranger can put their own words on, in this
-// app's voice and on its domain, with nothing in the CSP that could stop it. TempData rides
-// in a cookie the data protection ring signs, and keeps the launch id and the patient out of
-// browser history.
-static IResult Fail(HttpContext http, string message)
-{
-    var tempData = http
-        .RequestServices.GetRequiredService<ITempDataDictionaryFactory>()
-        .GetTempData(http);
-
-    tempData[ErrorModel.Key] = message;
-
-    // Razor Pages has a filter that does this; a minimal endpoint has to say so.
-    tempData.Save();
-
-    return Results.Redirect("/error");
-}
 
 // Named so the integration tests can host this app with WebApplicationFactory;
 // top-level statements otherwise compile to an internal Program class.

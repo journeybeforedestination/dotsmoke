@@ -7,9 +7,9 @@ namespace SmartOnFhirDemo;
 ///
 /// A launch in flight holds the PKCE verifier, which is why it is claimed rather than read:
 /// it is spent by the token exchange and must not survive it. An established launch holds
-/// the access token and the account of the launch that the pages render — both halves of
-/// what the plain summary and the narrated walkthrough each need — and expires when the
-/// EHR said the token does.
+/// the access token and the account of the launch that the pages render — the steps narrate
+/// the second half, the app reads through the first — and expires when the EHR said the
+/// token does.
 ///
 /// This stays <see cref="IMemoryCache"/> rather than becoming ASP.NET's session: ISession
 /// stores byte arrays, so a launch context would have to be serialised, and this is

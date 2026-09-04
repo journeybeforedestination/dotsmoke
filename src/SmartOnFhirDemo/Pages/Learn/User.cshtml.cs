@@ -4,7 +4,8 @@ using Microsoft.Extensions.Caching.Memory;
 namespace SmartOnFhirDemo.Pages.Learn;
 
 /// <summary>Who was driving the launch, read back from what the launch recorded.</summary>
-public class UserModel(IMemoryCache cache, TimeProvider clock) : LearnPage(cache, clock)
+public class UserModel(IMemoryCache cache, AccessLog log, TimeProvider clock)
+    : LearnPage(cache, log, clock)
 {
     public LaunchStep Step { get; private set; } = default!;
 
@@ -12,9 +13,9 @@ public class UserModel(IMemoryCache cache, TimeProvider clock) : LearnPage(cache
 
     public string PatientId { get; private set; } = "";
 
-    public IActionResult OnGet(string? id, string? patient)
+    public async Task<IActionResult> OnGetAsync(string? id, string? patient, CancellationToken ct)
     {
-        if (Launch(id, patient) is not { } view)
+        if (await LaunchAsync(id, patient, ct) is not { } view)
             return Relaunch(patient);
 
         (LaunchId, PatientId) = (view.Facts.LaunchId, view.Facts.PatientId);

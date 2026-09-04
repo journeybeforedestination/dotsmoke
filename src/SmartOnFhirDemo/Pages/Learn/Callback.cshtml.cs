@@ -14,8 +14,9 @@ public class CallbackModel(
     SmartLaunch smart,
     IOptions<SmartOptions> options,
     IMemoryCache cache,
+    AccessLog log,
     TimeProvider clock
-) : LearnPage(cache, clock)
+) : LearnPage(cache, log, clock)
 {
     public LaunchStep Step { get; private set; } = default!;
 

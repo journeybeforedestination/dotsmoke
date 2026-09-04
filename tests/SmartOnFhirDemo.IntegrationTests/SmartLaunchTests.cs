@@ -24,56 +24,47 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// </summary>
     private static readonly string[] DetailLabels = ["Address", "Phone", "Marital status"];
 
-    /// <summary>Runs a whole launch — discovery, authorize, token, patient read — as one GET.</summary>
-    private async Task<string> LaunchAsync(string authError = "")
+    /// <summary>
+    /// A whole launch, from the EHR to the app: the opening page, the trip out to the EHR,
+    /// the pause, the exchange that spends the code, and the page the walkthrough ends on.
+    /// </summary>
+    private async Task<string> LaunchAsync()
     {
         using var client = launcher.CreateChainClient();
 
-        var (_, html) = await LaunchAsync(client, launcher.PatientId, authError);
+        var (_, html) = await LaunchAsync(client, launcher.PatientId);
         return html;
     }
 
     /// <summary>
     /// The same launch down a client the caller owns, so two launches can share a cookie
-    /// jar and be two tabs of one browser. Returns where the launch landed as well as what
-    /// it rendered: that URL is the launch's name, and going back to it is the point.
+    /// jar and be two tabs of one browser. Returns where the app is as well as what it
+    /// rendered: that URL is the launch's name, and going back to it is the point.
     /// </summary>
-    private async Task<(Uri Landed, string Html)> LaunchAsync(
-        HttpClient client,
-        string patientId,
-        string authError = ""
-    )
+    private async Task<(Uri Landed, string Html)> LaunchAsync(HttpClient client, string patientId)
     {
-        var launch = LaunchParams.Encode(patientId, launcher.ProviderId, authError);
-        var url =
-            $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
-            + $"&launch={Uri.EscapeDataString(launch)}";
+        var (_, pause) = await LearnAsync(client, patientId);
+        var (landed, _) = await ExchangeAsync(client, pause);
 
-        using var response = await client.GetAsync(url);
+        var app = new Uri($"/learn/patient{landed.Query}", UriKind.Relative);
 
-        Assert.True(
-            response.IsSuccessStatusCode,
-            $"The launch ended at {(int)response.StatusCode}."
-        );
-
-        return (response.RequestMessage!.RequestUri!, await response.Content.ReadAsStringAsync());
+        return (app, await ReadAsync(client, app.ToString()));
     }
 
     // ---- The happy path ---------------------------------------------------
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task An_ehr_launch_renders_the_patient_summary()
+    public async Task An_ehr_launch_ends_on_the_patient_the_ehr_chose()
     {
         var html = await LaunchAsync();
 
-        Assert.Contains("Patient summary", html);
         Assert.NotEmpty(Banner(html));
         foreach (var label in DetailLabels)
             Assert.Contains($"<dt>{label}</dt>", html);
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task The_summary_is_populated_from_the_patient_that_was_read()
+    public async Task The_banner_is_populated_from_the_patient_that_was_read()
     {
         var html = await LaunchAsync();
 
@@ -81,18 +72,6 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         // read one and projected it is.
         Assert.NotEqual("Unnamed patient", Banner(html));
         Assert.NotEmpty(Meta(html));
-    }
-
-    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task An_ehr_launch_names_the_practitioner_who_started_it()
-    {
-        var html = await LaunchAsync();
-
-        // Which practitioner the sandbox serves is not the point; that the id_token was
-        // validated, its fhirUser followed, and a real name read back is.
-        Assert.Contains("Launched by", html);
-        Assert.DoesNotContain("no id_token", html);
-        Assert.DoesNotContain("could not be validated", html);
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
@@ -117,12 +96,12 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
 
         using var client = launcher.CreateDirectClient();
         using var response = await client.GetAsync(
-            $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
+            $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
                 + $"&launch={Uri.EscapeDataString(launch)}",
             TestContext.Current.CancellationToken
         );
 
-        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.DoesNotContain(
             response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies : [],
             cookie => cookie.StartsWith(BrowserSession.CookieName, StringComparison.Ordinal)
@@ -160,7 +139,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task A_summary_claiming_the_wrong_patient_renders_nothing()
+    public async Task A_page_claiming_the_wrong_patient_renders_nothing()
     {
         using var client = launcher.CreateChainClient();
 
@@ -181,39 +160,10 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         Assert.DoesNotContain("<dt>MRN</dt>", html);
     }
 
-    private static string LaunchId(Uri summary) =>
-        Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(summary.Query)["id"]!;
+    private static string LaunchId(Uri app) =>
+        Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(app.Query)["id"]!;
 
-    // ---- Reading on from the summary --------------------------------------
-
-    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task The_summary_offers_the_panels_the_launch_asked_for_scopes_for()
-    {
-        var html = await LaunchAsync();
-
-        foreach (var panel in ChartPanel.All)
-            Assert.Contains($"show={panel.Slug}", html);
-    }
-
-    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task A_panel_reads_on_from_the_launch_that_is_already_open()
-    {
-        using var client = launcher.CreateChainClient();
-
-        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
-
-        using var response = await client.GetAsync(
-            new Uri($"{landed}&show={ChartPanel.Conditions.Slug}"),
-            TestContext.Current.CancellationToken
-        );
-        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        // Which conditions the sandbox serves is not the point, and it can be reseeded;
-        // that the launch was still live enough to search on is.
-        Assert.Contains(ChartPanel.Conditions.Title, html);
-        Assert.DoesNotContain("no longer open", html);
-        Assert.DoesNotContain("would not return", html);
-    }
+    // ---- Reading on from the app ------------------------------------------
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
     public async Task A_swapped_panel_and_a_navigated_one_are_the_same_markup()
@@ -255,19 +205,9 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         // the authorization step and names every scope it would not give. So a launch
         // here cannot be used to show a granted-versus-requested gap on the summary: there
         // is no launch to show it on. See ideas.md, under SMART v2 granular scopes.
-        var launch = LaunchParams.Encode(
-            launcher.PatientId,
-            launcher.ProviderId,
+        var (_, html) = await LearnAsync(
             grantedScope: "launch openid fhirUser patient/Patient.read"
         );
-
-        using var client = launcher.CreateChainClient();
-        using var response = await client.GetAsync(
-            $"/launch?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
-                + $"&launch={Uri.EscapeDataString(launch)}",
-            TestContext.Current.CancellationToken
-        );
-        var html = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains("The EHR refused the authorization request", html);
         Assert.Contains("patient/Condition.read", html);
@@ -281,15 +221,22 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     [InlineData("auth_invalid_redirect_uri")]
     public async Task An_authorization_error_from_the_ehr_reaches_the_error_page(string authError)
     {
-        var html = await LaunchAsync(authError);
+        // The EHR sends the browser back with an error instead of a code, so the
+        // walkthrough never reaches its pause.
+        var (_, landed) = await LearnAsync(authError);
 
-        Assert.Contains("The EHR refused the authorization request", html);
+        Assert.Contains("The EHR refused the authorization request", landed);
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
     public async Task A_rejected_token_exchange_reaches_the_error_page()
     {
-        var html = await LaunchAsync("token_invalid_token");
+        // This one fails later than the rest: the code arrives, the pause renders, and
+        // pressing exchange is what the EHR refuses.
+        using var client = launcher.CreateChainClient();
+
+        var (_, pause) = await LearnAsync(client, launcher.PatientId, "token_invalid_token");
+        var (_, html) = await ExchangeAsync(client, pause);
 
         Assert.Contains("Token exchange failed", html);
     }
@@ -301,10 +248,13 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// page, then the trip out to the EHR and back to /learn/callback. The exchange
     /// itself is a form post, and is covered against a stub in the unit tests.
     /// </summary>
-    private async Task<(string Opening, string Pause)> LearnAsync()
+    private async Task<(string Opening, string Pause)> LearnAsync(
+        string authError = "",
+        string grantedScope = ""
+    )
     {
         using var client = launcher.CreateChainClient();
-        return await LearnAsync(client);
+        return await LearnAsync(client, launcher.PatientId, authError, grantedScope);
     }
 
     /// <summary>
@@ -312,9 +262,14 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     /// pause: the exchange is antiforgery-protected, so it needs the jar that holds the
     /// cookie the pause was served with.
     /// </summary>
-    private async Task<(string Opening, string Pause)> LearnAsync(HttpClient client)
+    private async Task<(string Opening, string Pause)> LearnAsync(
+        HttpClient client,
+        string patientId,
+        string authError = "",
+        string grantedScope = ""
+    )
     {
-        var launch = LaunchParams.Encode(launcher.PatientId, launcher.ProviderId);
+        var launch = LaunchParams.Encode(patientId, launcher.ProviderId, authError, grantedScope);
         var url =
             $"/learn?iss={Uri.EscapeDataString(Launcher.Iss(launch))}"
             + $"&launch={Uri.EscapeDataString(launch)}";
@@ -326,7 +281,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         );
         var openingHtml = await opening.Content.ReadAsStringAsync();
 
-        // The continue button leads where the plain launch would have sent a 302.
+        // The continue button leads where an app that did not pause would have sent a 302.
         var authorize = WebUtility.HtmlDecode(
             Regex
                 .Match(openingHtml, "class=\"button go\" href=\"(?<url>[^\"]+)\"")
@@ -406,14 +361,8 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
             $"The exchange ended at {(int)exchanged.StatusCode}."
         );
 
-        var landed = exchanged.RequestMessage!.RequestUri!;
-
-        // The state that got us here is spent; the walkthrough carries on by launch id.
-        Assert.Contains("id=", landed.Query, StringComparison.Ordinal);
-        Assert.DoesNotContain("state=", landed.Query, StringComparison.Ordinal);
-
         return (
-            landed,
+            exchanged.RequestMessage!.RequestUri!,
             await exchanged.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)
         );
     }
@@ -423,7 +372,7 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     {
         using var client = launcher.CreateChainClient();
 
-        var (_, pause) = await LearnAsync(client);
+        var (_, pause) = await LearnAsync(client, launcher.PatientId);
         var (landed, _) = await ExchangeAsync(client, pause);
 
         using var identity = await client.GetAsync(
@@ -444,10 +393,14 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     {
         using var client = launcher.CreateChainClient();
 
-        var (_, pause) = await LearnAsync(client);
+        var (_, pause) = await LearnAsync(client, launcher.PatientId);
 
         // The exchange lands straight on the token page, which carries steps 5 and 6.
-        var (_, html) = await ExchangeAsync(client, pause);
+        var (landed, html) = await ExchangeAsync(client, pause);
+
+        // The state that got us here is spent; the walkthrough carries on by launch id.
+        Assert.Contains("id=", landed.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("state=", landed.Query, StringComparison.Ordinal);
 
         Assert.Contains("The session this launch opened", html);
 
@@ -458,13 +411,13 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
-    public async Task The_narrated_launch_ends_with_the_same_panels_the_plain_one_offers()
+    public async Task The_narrated_launch_ends_on_an_app_that_reads_on_from_the_launch()
     {
-        // Feature parity is the claim /learn makes by narrating this app rather than a
-        // simpler one, and the last page is where it would quietly stop being true.
+        // The walkthrough claims to be narrating a working app, and the last page is where
+        // that claim would quietly stop being true.
         using var client = launcher.CreateChainClient();
 
-        var (_, pause) = await LearnAsync(client);
+        var (_, pause) = await LearnAsync(client, launcher.PatientId);
         var (landed, _) = await ExchangeAsync(client, pause);
 
         using var response = await client.GetAsync(
@@ -479,8 +432,11 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         foreach (var panel in ChartPanel.All)
             Assert.Contains($"show={panel.Slug}", html);
 
+        // Which conditions the sandbox serves is not the point, and it can be reseeded;
+        // that the launch was still live enough to search on is.
         Assert.Contains(ChartPanel.Conditions.Title, html);
         Assert.DoesNotContain("no longer open", html);
+        Assert.DoesNotContain("would not return", html);
 
         // Still the walkthrough, not a second summary page: the narration is above it.
         Assert.Contains("The launch is done", html);
@@ -497,8 +453,12 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         return WebUtility.HtmlDecode(match.Groups["value"].Value);
     }
 
-    /// <summary>The name the app's banner shows, which is where the patient is named now.</summary>
-    private static string Banner(string html) => Group(html, "<h2>(?<value>.*?)</h2>", "banner");
+    /// <summary>
+    /// The name the app's banner shows, which is where the patient is named. Scoped to the
+    /// banner rather than to the first h2: the steps above the app are headings too.
+    /// </summary>
+    private static string Banner(string html) =>
+        Group(html, "<header class=\"banner\">\\s*<h2>(?<value>.*?)</h2>", "banner");
 
     /// <summary>The line beneath it: gender, birth date and MRN, as the banner renders them.</summary>
     private static string Meta(string html) =>

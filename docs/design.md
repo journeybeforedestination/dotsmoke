@@ -7,9 +7,9 @@ misread the shape of the app over.
 ## The protocol is separate from the web layer
 
 `SmartLaunch` does discovery, the authorization request, the token exchange and the
-patient read, returning a closed set of outcomes. The `/launch` and `/callback`
-endpoints map those onto responses. That separation is what lets the launch be
-tested without a web host.
+patient read, returning a closed set of outcomes. The `/learn` pages map those onto
+responses and onto the prose that narrates them. That separation is what lets the
+launch be tested without a web host.
 
 The OAuth handshake is hand-rolled over `HttpClient`. SMART reveals the issuer only
 at launch time, which ASP.NET's `OpenIdConnect` middleware — built around a static
@@ -31,20 +31,20 @@ resolve. `IHttpClientFactory` pools handlers across requests, and one holding a
 
 The access token outlives the request that fetched it, filed against the browser's
 session cookie and expiring when the EHR said it stops working. That is what a
-summary you can return to costs.
+walkthrough you can step through, and an app you can return to, costs.
 
 ## The app bounds its own traffic, not the EHR's
 
-`/launch` is a URL a stranger can open, and every launch drives requests at someone
+`/learn` is a URL a stranger can open, and every launch drives requests at someone
 else's server — for the shipped configuration, a public sandbox with no SLA. One
 `DelegatingHandler` on every HTTP client holds this app to four requests in flight
 at a time; a fifth waits five seconds for a slot and is then refused as a server
 that could not be reached. The numbers and their reasons are in `EhrTraffic`.
 
 The bound is on the calls this app makes rather than on the requests it receives,
-and that is the whole design. An inbound per-IP limit on `/launch` bounds one
+and that is the whole design. An inbound per-IP limit on `/learn` bounds one
 launch; the panel reads that follow come from an established session and never
-touch `/launch` again. Bounding the calls themselves is the only place that
+touch `/learn` again. Bounding the calls themselves is the only place that
 catches both.
 
 Concurrency rather than a rate, because it self-regulates: an EHR that slows down
@@ -100,9 +100,9 @@ all, silently.
 ## A tab swaps the pane, or navigates
 
 `_App.cshtml` renders the tabs as plain links and the pane through `_Pane.cshtml`.
-Both `/summary` and `/learn/patient` answer `?handler=pane` with that same partial
-alone, so a swap and a navigation cannot render different chart panels — there is
-one piece of markup and it does not know which happened.
+`/learn/patient` answers `?handler=pane` with that same partial alone, so a swap and
+a navigation cannot render different chart panels — there is one piece of markup and
+it does not know which happened.
 
 The handler resolves the launch through the same guard the page does. Skipping it
 would have made the pane a second way to read a patient the launch does not name,
@@ -120,9 +120,9 @@ launch is readable in one file and the pages stay markup.
 
 Its last step annotates nothing. By then every exchange has been explained, so the
 page hands over: one sentence saying the launch is done, and beneath it the app
-itself — the same `AppView`, the same partial and the same service the plain launch
-lands on. A walkthrough that left you with less than the plain launch would be
-teaching a smaller app than the one it narrated, and an integration test asserts it.
+itself — the banner, the panels the token allows, and the resource behind them. The
+narration stops; the app it was narrating is what is left, and an integration test
+asserts that it still reads on from the launch.
 
 ## Firely does the FHIR work
 

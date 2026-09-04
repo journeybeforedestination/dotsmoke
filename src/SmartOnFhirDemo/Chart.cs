@@ -78,13 +78,15 @@ public abstract record ChartOutcome
     public sealed record LaunchGone(ChartPanel Panel) : ChartOutcome;
 }
 
-/// <summary>
-/// The panels a page offers, the links to them, and the one it is showing. Shared by the
-/// plain summary and the narrated one so the two cannot drift apart.
-/// </summary>
-/// <param name="Path">The page the links point back at, which is the only difference between them.</param>
-public sealed record ChartView(string Path, string LaunchId, string PatientId, ChartOutcome? Shown)
+/// <summary>The panels the page offers, the links to them, and the one it is showing.</summary>
+public sealed record ChartView(string LaunchId, string PatientId, ChartOutcome? Shown)
 {
+    /// <summary>
+    /// The page a tab points back at is the page the tabs are on: the walkthrough's last
+    /// stop is the only place this app renders a chart.
+    /// </summary>
+    public const string Path = "/learn/patient";
+
     public string Link(ChartPanel panel) =>
         $"{Path}?id={Uri.EscapeDataString(LaunchId)}"
         + $"&patient={Uri.EscapeDataString(PatientId)}"
@@ -114,14 +116,12 @@ public sealed partial class Chart(
     /// remembers — that a name which is not a panel shows nothing is decided once, here.
     /// </summary>
     public async Task<ChartView> ViewAsync(
-        string path,
         string? sid,
         LaunchFacts facts,
         string? show,
         CancellationToken ct
     ) =>
         new(
-            path,
             facts.LaunchId,
             facts.PatientId,
             ChartPanel.For(show) is { } panel

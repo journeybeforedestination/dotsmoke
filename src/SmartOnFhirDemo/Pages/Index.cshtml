@@ -4,7 +4,6 @@
 @{
     ViewData["Title"] = "Launch this app from an EHR";
     var learnUrl = Smart.Value.Url("/learn");
-    var launchUrl = Smart.Value.Url("/launch");
 }
 
 <p>This app has nothing to show on its own — it waits to be launched by an EHR.</p>
@@ -12,25 +11,16 @@
 <ol>
     <li>Open the <a href="https://launch.smarthealthit.org/">SMART App Launcher</a>.</li>
     <li>Set <strong>Launch Type</strong> to <em>Provider EHR Launch</em> and <strong>FHIR Version</strong> to <em>R4</em>.</li>
-    <li>Paste one of the two URLs below into <strong>App's Launch URL</strong>, and leave Client ID and Redirect URIs blank.</li>
+    <li>Paste the URL below into <strong>App's Launch URL</strong>, and leave Client ID and Redirect URIs blank.</li>
     <li>Pick a patient, then press <strong>Launch</strong>.</li>
 </ol>
 
 <section class="step">
-    <h2>To understand it: <code>@learnUrl</code></h2>
+    <h2><code>@learnUrl</code></h2>
     <p>
-        The same launch, narrated. It stops at each step to show what was sent, what came
+        A real launch, narrated. It stops at each step to show what was sent, what came
         back, and why — the issuer check, discovery, the authorization request, PKCE, the
-        token exchange, and the patient read. Start here if you want to understand the
-        handshake rather than just see the result.
-    </p>
-</section>
-
-<section class="step">
-    <h2>To just see it: <code>@launchUrl</code></h2>
-    <p>
-        The same flow with no commentary. Discovery, authorization with PKCE, and the token
-        exchange all happen without stopping, and you land straight on the patient summary
-        — which is how a real app behaves.
+        token exchange, and the patient read — and ends on the patient summary the whole
+        handshake was for.
     </p>
 </section>
