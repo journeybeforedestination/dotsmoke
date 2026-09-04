@@ -14,7 +14,10 @@ public sealed class LauncherFixture : AppFixture, IAsyncLifetime
     private string? _otherPatientId;
     private string? _providerId;
 
-    /// <summary>A patient the launcher's FHIR server actually holds, read at start-up.</summary>
+    /// <summary>
+    /// A patient the launcher can complete a launch for, read at start-up. "Holds" is not
+    /// enough: see <see cref="LaunchableAsync"/>.
+    /// </summary>
     public string PatientId => Discovered(_patientId);
 
     /// <summary>
@@ -41,10 +44,51 @@ public sealed class LauncherFixture : AppFixture, IAsyncLifetime
 
         using var http = new HttpClient();
 
-        var patients = await IdsAsync(http, "Patient", count: 2);
+        var patients = await LaunchableAsync(http, count: 2);
         (_patientId, _otherPatientId) = (patients[0], patients[1]);
 
         _providerId = (await IdsAsync(http, "Practitioner", count: 1))[0];
+    }
+
+    /// <summary>
+    /// Patients the simulation can actually launch on, taken from the encounters rather
+    /// than from the patients. The launch asks the launcher to auto-select an encounter, and
+    /// a patient with none stops it at the launcher's encounter picker instead: the chain
+    /// then ends on a page, and every test here fails saying the callback carried no code.
+    /// The sandbox holds plenty of both kinds, so drawing from Patient is a coin toss —
+    /// which is what made this suite fail in batches, differently on each run.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> LaunchableAsync(HttpClient http, int count)
+    {
+        // More encounters than patients wanted, because one patient owns many of them.
+        var bundle = await http.GetStringAsync($"{Launcher.Url}/v/r4/fhir/Encounter?_count=50");
+
+        List<string> patients =
+        [
+            .. JsonDocument
+                .Parse(bundle)
+                .RootElement.GetProperty("entry")
+                .EnumerateArray()
+                .Select(entry =>
+                    entry
+                        .GetProperty("resource")
+                        .GetProperty("subject")
+                        .GetProperty("reference")
+                        .GetString()
+                )
+                .OfType<string>()
+                .Where(reference => reference.StartsWith("Patient/", StringComparison.Ordinal))
+                .Select(reference => reference["Patient/".Length..])
+                .Distinct(StringComparer.Ordinal)
+                .Take(count),
+        ];
+
+        return patients.Count == count
+            ? patients
+            : throw new InvalidOperationException(
+                $"The launcher's FHIR server offered {patients.Count} patients with an "
+                    + $"encounter, and these tests need {count}."
+            );
     }
 
     /// <summary>

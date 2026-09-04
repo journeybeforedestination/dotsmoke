@@ -46,7 +46,10 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
         var (_, pause) = await LearnAsync(client, patientId);
         var (landed, _) = await ExchangeAsync(client, pause);
 
-        var app = new Uri($"/learn/patient{landed.Query}", UriKind.Relative);
+        // Absolute, resolved against where the exchange landed. Callers read .Query and
+        // .GetLeftPart off this, and both throw on a relative URI — and a relative one also
+        // parses as a *file path* on Unix, so what reaches HttpClient is file:///learn/patient.
+        var app = new Uri(landed, $"/learn/patient{landed.Query}");
 
         return (app, await ReadAsync(client, app.ToString()));
     }
@@ -224,8 +227,10 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
 
     private static async Task<string> ReadAsync(HttpClient client, string url)
     {
+        // RelativeOrAbsolute so that a path is resolved against the client's BaseAddress
+        // rather than parsed as a file path, which is what a leading "/" means on Unix.
         using var response = await client.GetAsync(
-            new Uri(url),
+            new Uri(url, UriKind.RelativeOrAbsolute),
             TestContext.Current.CancellationToken
         );
 
