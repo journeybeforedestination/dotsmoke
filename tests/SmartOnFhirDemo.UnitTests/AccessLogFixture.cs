@@ -19,6 +19,8 @@ internal sealed class AccessLogFixture : IDisposable
 
     public AccessLog Log { get; }
 
+    public AccessLogReader Reader { get; }
+
     public AccessLogFixture()
     {
         _connection.Open();
@@ -29,6 +31,7 @@ internal sealed class AccessLogFixture : IDisposable
         Db.Database.Migrate();
 
         Log = new AccessLog(Db);
+        Reader = new AccessLogReader(Db);
     }
 
     public void Dispose()

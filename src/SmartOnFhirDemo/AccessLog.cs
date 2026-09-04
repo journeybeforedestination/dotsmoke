@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace SmartOnFhirDemo;
 
 /// <summary>
@@ -69,4 +71,33 @@ public sealed class AccessLog(AccessLogContext db)
         db.Entries.Add(entry);
         await db.SaveChangesAsync(ct);
     }
+}
+
+/// <summary>
+/// Reading the log back, and the other half of why <see cref="AccessLog"/> is shaped the
+/// way it is: the seam that records a read stays unable to query, so the ability to query
+/// arrives as a second type rather than as two more methods on the first.
+///
+/// Everything here is scoped to one launch. There is no method that reads across launches,
+/// because the only caller is a page whose whole audience is "whoever just launched" — see
+/// <c>ideas.md</c> for the view that would need an audience this app cannot authenticate.
+/// </summary>
+public sealed class AccessLogReader(AccessLogContext db)
+{
+    /// <summary>
+    /// The rows one launch caused, newest first — by id, which is insertion order. Not by
+    /// time: SQLite refuses to ORDER BY a DateTimeOffset, and a launch's requests share a
+    /// timestamp often enough that the time would not settle it anyway.
+    /// </summary>
+    public async Task<IReadOnlyList<AccessLogEntry>> ForLaunchAsync(
+        string launchId,
+        int limit,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Entries.AsNoTracking()
+            .Where(entry => entry.LaunchId == launchId)
+            .OrderByDescending(entry => entry.Id)
+            .Take(limit)
+            .ToListAsync(ct);
 }

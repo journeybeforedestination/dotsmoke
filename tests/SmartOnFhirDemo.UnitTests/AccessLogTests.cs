@@ -97,4 +97,96 @@ public class AccessLogTests
     {
         Assert.Null(Smart.Origin("Patient/pat-1"));
     }
+
+    // ---- What a launch is allowed to read back ----------------------------
+
+    private static AccessLogEntry Read(string launchId, string patientId) =>
+        Read(patientId) with
+        {
+            LaunchId = launchId,
+        };
+
+    [Fact]
+    public async Task A_launch_is_shown_the_requests_it_caused_and_nobody_elses()
+    {
+        // The guarantee the LaunchId column was added for. Scoped by issuer and patient
+        // instead, this would hand one clinician the times and panels another had read
+        // from the same chart — from a page that never asked whether they may know.
+        using var fixture = new AccessLogFixture();
+
+        await fixture.Log.RecordAsync(Read("mine", "pat-1"), TestContext.Current.CancellationToken);
+        await fixture.Log.RecordAsync(
+            Read("someone-elses", "pat-1"),
+            TestContext.Current.CancellationToken
+        );
+
+        var rows = await fixture.Reader.ForLaunchAsync(
+            "mine",
+            limit: 10,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.All(rows, row => Assert.Equal("mine", row.LaunchId));
+        Assert.Single(rows);
+    }
+
+    [Fact]
+    public async Task Rows_written_before_launches_were_recorded_belong_to_no_launch()
+    {
+        // Pre-migration rows carry "", which is what they are: unattributed. A fallback
+        // to issuer and patient for a launch with no rows is the leak above, disguised.
+        using var fixture = new AccessLogFixture();
+
+        await fixture.Log.RecordAsync(Read("", "pat-1"), TestContext.Current.CancellationToken);
+
+        Assert.Empty(
+            await fixture.Reader.ForLaunchAsync(
+                "some-launch",
+                limit: 10,
+                TestContext.Current.CancellationToken
+            )
+        );
+    }
+
+    [Fact]
+    public async Task The_newest_request_comes_back_first()
+    {
+        using var fixture = new AccessLogFixture();
+
+        foreach (var patientId in new[] { "first", "second", "third" })
+            await fixture.Log.RecordAsync(
+                Read("mine", patientId),
+                TestContext.Current.CancellationToken
+            );
+
+        var rows = await fixture.Reader.ForLaunchAsync(
+            "mine",
+            limit: 10,
+            TestContext.Current.CancellationToken
+        );
+
+        // Every row here shares a timestamp, which is not a contrivance: a launch's probe
+        // and its first reads land in the same second. Insertion order breaks the tie.
+        Assert.Equal(["third", "second", "first"], rows.Select(row => row.PatientId));
+    }
+
+    [Fact]
+    public async Task No_more_rows_come_back_than_were_asked_for()
+    {
+        using var fixture = new AccessLogFixture();
+
+        for (var i = 0; i < 5; i++)
+            await fixture.Log.RecordAsync(
+                Read("mine", $"pat-{i}"),
+                TestContext.Current.CancellationToken
+            );
+
+        var rows = await fixture.Reader.ForLaunchAsync(
+            "mine",
+            limit: 2,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(2, rows.Count);
+    }
 }
