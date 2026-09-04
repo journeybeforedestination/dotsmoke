@@ -55,11 +55,16 @@ public sealed record AccessView(
     /// add — the request beside them says the rest.
     /// </summary>
     private static string Asked(AccessLogEntry entry) =>
-        entry.RequestPath switch
+        entry switch
         {
-            "metadata" => "The server's capability statement",
-            var path when path.Contains('?', StringComparison.Ordinal) =>
+            // On the resource type rather than on the path: the probe arrives as
+            // "metadata?_summary=true", so matching the path whole would call the one
+            // request every launch opens with a search.
+            { ResourceType: "metadata" } => "The server's capability statement",
+
+            { RequestPath: var path } when path.Contains('?', StringComparison.Ordinal) =>
                 $"A search for {entry.ResourceType}",
+
             _ => $"A read of {entry.ResourceType}",
         };
 

@@ -73,9 +73,11 @@ public class AccessViewTests
     {
         // "A read of metadata" is true and says nothing; this is the first row every
         // launch has, and it is worth a reader knowing what it was for.
+        // As Firely actually asks for it, which is why this matches on the resource type:
+        // the query string would otherwise make the probe read as a search.
         Assert.Equal(
             "The server's capability statement",
-            Only(Entry("metadata", resourceType: "metadata")).Asked
+            Only(Entry("metadata?_summary=true", resourceType: "metadata")).Asked
         );
     }
 

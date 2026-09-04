@@ -216,7 +216,9 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
 
         // The probe and the patient read happened before this page was first rendered, so a
         // launch-scoped log is complete from the launch rather than from the first tab.
-        Assert.Contains("The server's capability statement", html);
+        // Without the apostrophe, which Razor encodes: this asserts what the row says, not
+        // how HTML spells it.
+        Assert.Contains("capability statement", html);
         Assert.Contains($"A read of Patient", html);
 
         // And the panel this URL asked for, which is read while the page is being rendered:
