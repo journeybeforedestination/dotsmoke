@@ -121,7 +121,15 @@ A refusal answers with a status rather than a redirect, and the script's fallbac
 to navigate for real and land on `/error`. Swapping the refusal into the pane instead
 would leave the banner above it still naming a patient whose launch is gone.
 
-`?handler=access` renders the access section the same way, through the same guard.
+`?handler=access` renders the access section the same way, through the same guard,
+and the script refreshes it after the pane rather than beside it: reading a panel is
+itself a logged request, so a section fetched in parallel would race the row it
+exists to show. Without the refresh the log would be right on arrival and silently
+wrong from the first tab press — missing the one request the reader just caused.
+
+The swap replaces the contents of a div inside the section's `<details>` rather than
+the `<details>` itself, which would reset `open` and collapse the log under whoever
+had just expanded it.
 
 ## The walkthrough is a pure projection
 

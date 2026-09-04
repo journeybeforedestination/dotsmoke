@@ -186,6 +186,24 @@ public class SmartLaunchTests(LauncherFixture launcher) : IClassFixture<Launcher
     }
 
     [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
+    public async Task A_swapped_access_log_and_a_navigated_one_are_the_same_markup()
+    {
+        // The same claim as the pane's, for the section the script refreshes beside it. It
+        // has to hold or the log contradicts the thing it teaches: press a tab and the
+        // search you just caused would be missing from the trail of what you caused.
+        using var client = launcher.CreateChainClient();
+
+        var (landed, _) = await LaunchAsync(client, launcher.PatientId);
+        var panel = $"{landed}&show={ChartPanel.Vitals.Slug}";
+
+        var page = await ReadAsync(client, panel);
+        var section = await ReadAsync(client, $"{panel}&handler=access");
+
+        Assert.DoesNotContain("<!DOCTYPE html>", section);
+        Assert.Contains(section.Trim(), page);
+    }
+
+    [Fact(Skip = NeedsLauncher, SkipUnless = nameof(LauncherIsRunning))]
     public async Task The_app_shows_a_launch_the_requests_it_made()
     {
         using var client = launcher.CreateChainClient();
