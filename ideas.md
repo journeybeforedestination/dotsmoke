@@ -62,6 +62,19 @@ gate), which is done — these are what was deliberately left out of it.
 - **Token introspection.** The launcher publishes an `introspection_endpoint`.
   Niche, but it is the answer to "how does a resource server check this token".
 
+- **A cross-launch view — "who has been in this chart, lately".** The question the
+  access log's original index was built for, and the one the launch-scoped section
+  on `/learn/patient` deliberately does not answer. Scoping those rows by issuer and
+  patient instead would show one clinician which of their colleagues had opened the
+  chart, from a page that never asked whether they may know that. It needs an
+  audience that is not "whoever just launched", which means auth this app has not
+  got.
+
+- **An operator or admin view of the whole log.** Same blocker, larger: every
+  patient's access history behind whatever authenticates the operator, on a public
+  URL. Offline is the honest answer today — `sqlite3 app.db`, which the retained
+  `(IssuerOrigin, PatientId, OccurredAt)` index is indexed for.
+
 ## Demonstrating .NET
 
 - **Typed clients and resilience.** The FHIR reads now go through a named client,

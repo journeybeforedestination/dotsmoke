@@ -30,6 +30,7 @@ internal sealed class AccessLogHandler(LaunchContext launch, AccessLog log, Time
         await log.RecordAsync(
             new AccessLogEntry(
                 clock.GetUtcNow(),
+                launch.LaunchId,
                 launch.IssuerOrigin,
                 launch.PatientId,
                 launch.FhirUser,

@@ -13,6 +13,7 @@ public class AccessLogTests
     private static AccessLogEntry Read(string patientId = "pat-1") =>
         new(
             Noon,
+            "launch-1",
             "https://ehr.example:443",
             patientId,
             "Practitioner/prac-1",
@@ -34,6 +35,7 @@ public class AccessLogTests
             .SingleAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(Noon, stored.OccurredAt);
+        Assert.Equal("launch-1", stored.LaunchId);
         Assert.Equal("https://ehr.example:443", stored.IssuerOrigin);
         Assert.Equal("pat-1", stored.PatientId);
         Assert.Equal("Practitioner/prac-1", stored.FhirUser);

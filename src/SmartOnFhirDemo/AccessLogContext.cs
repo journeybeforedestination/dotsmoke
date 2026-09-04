@@ -21,13 +21,20 @@ public sealed class AccessLogContext(DbContextOptions<AccessLogContext> options)
         entries.ToTable("AccessLog");
         entries.HasKey(entry => entry.Id);
 
-        // The question an access log is actually asked is "who has been in this chart,
-        // lately", so that is the order it is indexed in.
+        // "Who has been in this chart, lately" — the question an access log is classically
+        // asked, and one this app deliberately answers to nobody: it needs an audience that
+        // is not "whoever just launched". Kept for whoever opens app.db with sqlite3.
         entries.HasIndex(entry => new
         {
             entry.IssuerOrigin,
             entry.PatientId,
             entry.OccurredAt,
         });
+
+        // What the app itself asks: the rows one launch caused, newest first. Ordered by the
+        // id rather than by the time because SQLite cannot ORDER BY a DateTimeOffset at all
+        // — and the id is better anyway: rows within a launch share a timestamp routinely,
+        // and insertion order is the order the requests actually left.
+        entries.HasIndex(entry => new { entry.LaunchId, entry.Id });
     }
 }

@@ -11,9 +11,15 @@ namespace SmartOnFhirDemo;
 /// and provider into it — so keyed on the raw string, every patient would look like a
 /// different EHR. <see cref="Smart.Origin"/> is the same collapse the trust check makes.
 /// </param>
+/// <param name="LaunchId">
+/// Which launch caused the request. The narrow scope rather than the obvious one: a launch
+/// asked to show its own rows must not be handed another clinician's, and issuer and patient
+/// together would do exactly that for two people in one chart.
+/// </param>
 /// <param name="Outcome">One of <see cref="AccessOutcome"/>.</param>
 public sealed record AccessLogEntry(
     DateTimeOffset OccurredAt,
+    string LaunchId,
     string IssuerOrigin,
     string? PatientId,
     string? FhirUser,

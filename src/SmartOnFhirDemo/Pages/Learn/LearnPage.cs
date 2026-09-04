@@ -64,6 +64,7 @@ public abstract class LearnPage(IMemoryCache cache, AccessLog log, TimeProvider 
     private AccessLogEntry Refused(LaunchFacts facts, string claimed) =>
         new(
             Clock.GetUtcNow(),
+            facts.LaunchId,
             facts.IssuerOrigin,
             claimed,
             facts.FhirUser,
